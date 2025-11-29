@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>EduPro - All Courses</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
+      rel="stylesheet"
+    />
+  </head>
+  <body class="bg-gray-50 text-gray-800 font-sans flex flex-col min-h-screen">
+    <nav class="bg-white shadow-md fixed w-full z-50 top-0 left-0">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex justify-between h-16">
+          <div class="flex items-center">
+            <a href="index.html" class="text-2xl font-bold text-blue-600"
+              ><i class="fas fa-graduation-cap"></i> EduPro</a
+            >
+          </div>
+          <div class="hidden md:flex items-center space-x-8">
+            <a href="index.html" class="text-gray-600 hover:text-blue-600"
+              >Home</a
+            >
+            <a href="courses.html" class="text-blue-600 font-semibold"
+              >Courses</a
+            >
+            <a
+              href="dashboard.html"
+              class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
+              >Dashboard</a
+            >
+          </div>
+          <div class="md:hidden flex items-center">
+            <button
+              id="mobile-menu-btn"
+              class="text-gray-600 hover:text-blue-600 focus:outline-none"
+            >
+              <i class="fas fa-bars text-2xl"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div
+        id="mobile-menu"
+        class="hidden md:hidden bg-white pb-4 px-4 border-t"
+      >
+        <a href="index.html" class="block py-2 text-gray-600">Home</a>
+        <a href="courses.html" class="block py-2 text-blue-600 font-bold"
+          >Courses</a
+        >
+        <a href="dashboard.html" class="block py-2 text-gray-600">Dashboard</a>
+      </div>
+    </nav>
+
+    <div class="pt-24 pb-12 max-w-7xl mx-auto px-4 flex-grow">
+      <h1 class="text-3xl font-bold mb-8">All Courses</h1>
+
+      <div id="filter-bar" class="flex flex-wrap gap-2 mb-8">
+        <button
+          data-category="All"
+          class="filter-btn px-4 py-2 bg-blue-600 text-white rounded-full transition"
+        >
+          All
+        </button>
+        <button
+          data-category="Development"
+          class="filter-btn px-4 py-2 bg-white border border-gray-300 rounded-full hover:bg-gray-50 transition"
+        >
+          Development
+        </button>
+        <button
+          data-category="Design"
+          class="filter-btn px-4 py-2 bg-white border border-gray-300 rounded-full hover:bg-gray-50 transition"
+        >
+          Design
+        </button>
+        <button
+          data-category="Business"
+          class="filter-btn px-4 py-2 bg-white border border-gray-300 rounded-full hover:bg-gray-50 transition"
+        >
+          Business
+        </button>
+        <button
+          data-category="Data Science"
+          class="filter-btn px-4 py-2 bg-white border border-gray-300 rounded-full hover:bg-gray-50 transition"
+        >
+          Data Science
+        </button>
+        <button
+          data-category="Marketing"
+          class="filter-btn px-4 py-2 bg-white border border-gray-300 rounded-full hover:bg-gray-50 transition"
+        >
+          Marketing
+        </button>
+        <button
+          data-category="IT & Software"
+          class="filter-btn px-4 py-2 bg-white border border-gray-300 rounded-full hover:bg-gray-50 transition"
+        >
+          IT & Software
+        </button>
+      </div>
+
+      <div
+        id="courses-grid"
+        class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"
+      ></div>
+    </div>
+
+    <footer class="bg-gray-800 text-white py-8 text-center mt-auto">
+      <p>&copy; 2025 EduPro LMS. All rights reserved.</p>
+    </footer>
+
+    <script src="data.js"></script>
+    <script src="script.js"></script>
+    <script>
+      const coursesGrid = document.getElementById("courses-grid");
+      const filterButtons = document.querySelectorAll(".filter-btn");
+
+      // Function to update button styling
+      function updateFilterStyles(activeCategory) {
+        filterButtons.forEach((btn) => {
+          if (btn.getAttribute("data-category") === activeCategory) {
+            btn.classList.add("bg-blue-600", "text-white");
+            btn.classList.remove("bg-white", "border", "border-gray-300", "hover:bg-gray-50");
+          } else {
+            btn.classList.remove("bg-blue-600", "text-white");
+            btn.classList.add("bg-white", "border", "border-gray-300", "hover:bg-gray-50");
+          }
+        });
+      }
+
+      // Function to render courses based on a filter
+      function renderCourses(filterCategory = "All") {
+        coursesGrid.innerHTML = "";
+
+        const filteredCourses =
+          filterCategory === "All"
+            ? coursesData
+            : coursesData.filter(
+                (course) => course.category === filterCategory
+              );
+
+        if (filteredCourses.length === 0) {
+          coursesGrid.innerHTML = `
+					<p class="col-span-3 text-center text-xl text-gray-500 py-10">
+						No courses found in the **${filterCategory}** category.
+					</p>
+				`;
+          return;
+        }
+
+        filteredCourses.forEach((course) => {
+          // --- NEW: Fetch Progress Data ---
+          const progress = getProgress(course.id);
+          const isEnrolled =
+            !!progress.completedLessons.length || progress.quizScore !== null;
+          let progressHTML = "";
+          let linkText = "View Course";
+          let linkColor = "bg-blue-600";
+
+          if (isEnrolled) {
+            const percent = calculateCourseProgress(course.id);
+            linkText = percent === 100 ? "Completed" : "Continue";
+            linkColor = percent === 100 ? "bg-green-600" : "bg-blue-600";
+
+            progressHTML = `
+                <div class="mt-2">
+                    <div class="flex justify-between text-xs text-gray-600 mb-1">
+                        <span>Progress</span>
+                        <span class="font-bold text-blue-700">${percent}%</span>
+                    </div>
+                    <div class="w-full bg-blue-200 rounded-full h-1.5">
+                        <div class="bg-blue-600 h-1.5 rounded-full" style="width: ${percent}%"></div>
+                    </div>
+                </div>
+              `;
+          }
+          // ----------------------------------
+
+          coursesGrid.innerHTML += `
+					<div class="bg-white rounded-xl shadow-md overflow-hidden hover:-translate-y-1 transition-transform duration-300 flex flex-col h-full">
+						<div class="relative">
+							<img src="${course.image}" class="w-full h-48 object-cover" alt="${
+            course.title
+          }">
+							<span class="absolute top-2 right-2 ${
+                isEnrolled
+                  ? "bg-blue-600 text-white"
+                  : "bg-black bg-opacity-60 text-white"
+              } text-xs px-2 py-1 rounded backdrop-blur-sm">${
+            isEnrolled
+              ? linkText === "Completed"
+                ? "COMPLETE"
+                : "ENROLLED"
+              : course.level
+          }</span>
+						</div>
+						<div class="p-6 flex flex-col flex-grow">
+							<span class="text-xs font-semibold text-blue-600">${course.category}</span>
+							<h3 class="text-lg font-bold mt-1 mb-2 leading-tight">${course.title}</h3>
+                            ${progressHTML}
+							<div class="flex justify-between items-center mt-auto pt-4">
+								<span class="text-gray-500 text-sm"><i class="far fa-file-alt"></i> ${
+                  course.lessons.length
+                } Lessons</span>
+								<a href="course-detail.html?id=${
+                  course.id
+                }" class="${linkColor} text-white px-4 py-2 rounded-lg text-sm hover:opacity-90 transition">${linkText}</a>
+							</div>
+						</div>
+					</div>
+				`;
+        });
+        updateFilterStyles(filterCategory);
+      }
+
+      // 1. Check for URL query parameter on page load
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlCategory = urlParams.get("category");
+
+      setTimeout(() => {
+        // Use the category from the URL, or default to 'All'
+        renderCourses(urlCategory || "All");
+      }, 100);
+
+      // 2. Add event listeners for button clicks (to handle filtering on the page itself)
+      filterButtons.forEach((button) => {
+        button.addEventListener("click", (event) => {
+          const category = event.target.getAttribute("data-category");
+          renderCourses(category);
+          // Optionally update the URL without refreshing for cleaner navigation
+          history.pushState(
+            null,
+            "",
+            `courses.html?category=${encodeURIComponent(category)}`
+          );
+        });
+      });
+    </script>
+  </body>
+</html>

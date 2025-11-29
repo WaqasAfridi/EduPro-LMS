@@ -3,20 +3,155 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SkillForge | Learn & Grow</title>
+    <title>EduPro - Home</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link
-      rel="shortcut icon"
-      href="images/fav-outlined.png"
-      type="image/x-icon"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
+      rel="stylesheet"
     />
-    <link rel="stylesheet" href="style/index.css" />
   </head>
-  <body>
-    <header>
-      <div class="header-left"></div>
-      <div class="header-center"></div>
-      <div class="header-right"></div>
-    </header>
+  <body class="bg-gray-50 text-gray-800 font-sans flex flex-col min-h-screen">
+    <nav class="bg-white shadow-md fixed w-full z-50 top-0 left-0">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex justify-between h-16">
+          <div class="flex items-center">
+            <a href="index.html" class="text-2xl font-bold text-blue-600"
+              ><i class="fas fa-graduation-cap"></i> EduPro</a
+            >
+          </div>
+          <div class="hidden md:flex items-center space-x-8">
+            <a href="index.html" class="text-blue-600 font-semibold">Home</a>
+            <a href="courses.html" class="text-gray-600 hover:text-blue-600"
+              >Courses</a
+            >
+            <a
+              href="dashboard.html"
+              class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
+              >Dashboard</a
+            >
+          </div>
+          <div class="md:hidden flex items-center">
+            <button
+              id="mobile-menu-btn"
+              class="text-gray-600 hover:text-blue-600 focus:outline-none"
+            >
+              <i class="fas fa-bars text-2xl"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div
+        id="mobile-menu"
+        class="hidden md:hidden bg-white pb-4 px-4 border-t"
+      >
+        <a href="index.html" class="block py-2 text-blue-600 font-bold">Home</a>
+        <a href="courses.html" class="block py-2 text-gray-600">Courses</a>
+        <a href="dashboard.html" class="block py-2 text-gray-600">Dashboard</a>
+      </div>
+    </nav>
+
+    <section
+      class="pt-32 pb-20 bg-gradient-to-r from-blue-600 to-indigo-700 text-white"
+    >
+      <div class="max-w-7xl mx-auto px-4 text-center">
+        <h1 class="text-4xl md:text-6xl font-bold mb-6">
+          Unlock Your Potential
+        </h1>
+        <p class="text-xl md:text-2xl mb-8 text-blue-100">
+          Master new skills with our interactive learning platform.
+        </p>
+        <a
+          href="courses.html"
+          class="bg-white text-blue-600 px-8 py-3 rounded-full font-bold hover:bg-gray-100 transition shadow-lg"
+          >Browse Courses</a
+        >
+      </div>
+    </section>
+
+    <section class="py-16 max-w-7xl mx-auto px-4">
+      <h2 class="text-3xl font-bold mb-8 text-center">Trending Courses</h2>
+      <div
+        id="trending-grid"
+        class="grid grid-cols-1 md:grid-cols-3 gap-8"
+      ></div>
+    </section>
+
+    <section class="py-16 bg-gray-100">
+      <div class="max-w-7xl mx-auto px-4">
+        <h2 class="text-3xl font-bold mb-8 text-center">Top Categories</h2>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <a
+            href="courses.html?category=Development"
+            class="bg-white p-6 rounded-lg shadow text-center hover:shadow-lg transition cursor-pointer transform hover:scale-105"
+          >
+            <i class="fas fa-code text-3xl text-blue-500 mb-2"></i>
+            <h3 class="font-bold">Development</h3>
+          </a>
+
+          <a
+            href="courses.html?category=Business"
+            class="bg-white p-6 rounded-lg shadow text-center hover:shadow-lg transition cursor-pointer transform hover:scale-105"
+          >
+            <i class="fas fa-chart-line text-3xl text-green-500 mb-2"></i>
+            <h3 class="font-bold">Business</h3>
+          </a>
+
+          <a
+            href="courses.html?category=Design"
+            class="bg-white p-6 rounded-lg shadow text-center hover:shadow-lg transition cursor-pointer transform hover:scale-105"
+          >
+            <i class="fas fa-palette text-3xl text-pink-500 mb-2"></i>
+            <h3 class="font-bold">Design</h3>
+          </a>
+
+          <a
+            href="courses.html?category=Data%20Science"
+            class="bg-white p-6 rounded-lg shadow text-center hover:shadow-lg transition cursor-pointer transform hover:scale-105"
+          >
+            <i class="fas fa-robot text-3xl text-purple-500 mb-2"></i>
+            <h3 class="font-bold">Data Science</h3>
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <footer class="bg-gray-800 text-white py-8 text-center mt-auto">
+      <p>&copy; 2025 EduPro LMS. All rights reserved.</p>
+    </footer>
+
+    <script src="data.js"></script>
+    <script src="script.js"></script>
+    <script>
+      const trendingContainer = document.getElementById("trending-grid");
+      // Wait for data to load then slice
+      setTimeout(() => {
+        coursesData.slice(0, 3).forEach((course) => {
+          trendingContainer.innerHTML += `
+                    <div class="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-xl transition-shadow duration-300 flex flex-col h-full">
+                        <img src="${
+                          course.image
+                        }" class="w-full h-48 object-cover" alt="${
+            course.title
+          }">
+                        <div class="p-6 flex flex-col flex-grow">
+                            <span class="text-xs font-semibold bg-blue-100 text-blue-600 px-2 py-1 rounded-full w-fit">${
+                              course.category
+                            }</span>
+                            <h3 class="text-xl font-bold mt-2 mb-2">${
+                              course.title
+                            }</h3>
+                            <p class="text-gray-600 text-sm mb-4 flex-grow">${course.description.substring(
+                              0,
+                              80
+                            )}...</p>
+                            <a href="course-detail.html?id=${
+                              course.id
+                            }" class="block w-full text-center bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition">View Course</a>
+                        </div>
+                    </div>
+                `;
+        });
+      }, 100);
+    </script>
   </body>
 </html>

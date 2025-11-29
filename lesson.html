@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>EduPro - Learning</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
+      rel="stylesheet"
+    />
+  </head>
+  <body
+    class="bg-white text-gray-800 font-sans h-screen flex flex-col overflow-hidden"
+  >
+    <nav
+      class="bg-gray-900 text-white h-16 flex items-center justify-between px-4 z-50 shadow-md flex-shrink-0"
+    >
+      <div class="flex items-center">
+        <a href="index.html" class="font-bold text-lg mr-6 text-blue-400"
+          >EduPro</a
+        >
+        <span
+          class="text-gray-400 text-sm hidden md:inline"
+          id="course-title-nav"
+          >Course Name</span
+        >
+      </div>
+      <a href="dashboard.html" class="text-sm hover:text-gray-300"
+        ><i class="fas fa-times"></i> Exit</a
+      >
+    </nav>
+
+    <div class="flex flex-1 overflow-hidden">
+      <div
+        class="w-full md:w-80 bg-gray-50 border-r overflow-y-auto hidden md:block flex-shrink-0"
+        id="sidebar"
+      ></div>
+
+      <div class="flex-1 overflow-y-auto p-4 md:p-8 bg-white">
+        <div class="max-w-4xl mx-auto">
+          <div
+            id="video-area"
+            class="bg-black w-full aspect-video flex items-center justify-center text-white rounded-lg shadow-lg mb-6 relative group cursor-pointer transition"
+          >
+            <i
+              class="fas fa-play-circle text-7xl opacity-80 group-hover:opacity-100 transition scale-100 group-hover:scale-110"
+            ></i>
+            <p class="absolute bottom-4 text-sm opacity-50">
+              Video Placeholder (Lesson: <span id="video-lesson-title"></span>)
+            </p>
+          </div>
+
+          <div id="lesson-details"></div>
+        </div>
+      </div>
+    </div>
+
+    <script src="data.js"></script>
+    <script src="script.js"></script>
+    <script>
+      const params = new URLSearchParams(window.location.search);
+      const cId = parseInt(params.get("courseId"));
+      const lId = parseInt(params.get("lessonId"));
+      const lessonsData = coursesData.find((c) => c.id === cId)?.lessons;
+
+      // Early check for missing parameters
+      if (!cId || !lId || !lessonsData) {
+        alert("Error: Course or Lesson not found.");
+        window.location.href = "courses.html";
+      }
+
+      setTimeout(() => {
+        const course = coursesData.find((c) => c.id === cId);
+        const lesson = course.lessons.find((l) => l.id === lId);
+        const progress = getProgress(cId);
+        const isLessonComplete = progress.completedLessons.includes(lesson.id);
+
+        document.getElementById("course-title-nav").innerText = course.title;
+        document.getElementById("video-lesson-title").innerText = lesson.title;
+
+        // Render Sidebar
+        const sidebar = document.getElementById("sidebar");
+        sidebar.innerHTML =
+          `
+				<div class="p-4 font-bold text-gray-700 border-b bg-gray-100">Course Content (${course.lessons.length} Lessons)</div>
+				` +
+          course.lessons
+            .map((l) => {
+              const isDone = progress.completedLessons.includes(l.id);
+              const isActive = l.id === lId;
+              return `
+					<a href="lesson.html?courseId=${cId}&lessonId=${l.id}" 
+						class="block p-4 border-b text-sm transition ${
+              isActive
+                ? "bg-blue-50 text-blue-700 border-l-4 border-blue-600"
+                : "text-gray-600 hover:bg-gray-100"
+            }">
+						<div class="flex items-center">
+							<i class="fas ${
+                isDone
+                  ? "fa-check-circle text-green-500"
+                  : "fa-circle text-gray-300"
+              } mr-2 text-xs"></i>
+							<span class="${isActive ? "font-bold" : ""}">${l.title}</span>
+						</div>
+					</a>
+				`;
+            })
+            .join("");
+
+        // Determine button state and text
+        let buttonText = isLessonComplete ? "Completed" : "Mark Completed";
+        let buttonClass = isLessonComplete
+          ? "bg-green-500 hover:bg-green-600 cursor-not-allowed"
+          : "bg-green-600 hover:bg-green-700";
+        let buttonDisabled = isLessonComplete ? "disabled" : "";
+
+        // Render Content
+        document.getElementById("lesson-details").innerHTML = `
+				<div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 border-b pb-4">
+					<div>
+						<h1 class="text-2xl font-bold text-gray-900">${lesson.title}</h1>
+						<p class="text-gray-500 text-sm">Lesson ${
+              course.lessons.findIndex((l) => l.id === lId) + 1
+            } of ${course.lessons.length}</p>
+					</div>
+					<button id="complete-btn" onclick="markComplete()" class="mt-4 md:mt-0 text-white px-6 py-2 rounded shadow transition flex items-center ${buttonClass}" ${buttonDisabled}>
+						<i class="fas fa-check mr-2"></i> ${buttonText}
+					</button>
+				</div>
+				<div class="prose max-w-none text-gray-700 leading-relaxed">
+					<p class="text-lg">${lesson.content}</p>
+					<h3 class="font-bold text-xl mt-6 mb-2">Key Takeaways</h3>
+					<ul class="list-disc pl-5 space-y-2">
+						<li>Understanding the core concepts efficiently.</li>
+						<li>Applying practical knowledge to real-world scenarios.</li>
+						<li>Analyzing the results for better performance.</li>
+					</ul>
+				</div>
+                <div id="quiz-link-area" class="mt-10 pt-6 border-t"></div>
+			`;
+
+        // Final check and quiz link display
+        updateNavigationButtons();
+      }, 100);
+
+      function updateNavigationButtons() {
+        const course = coursesData.find((c) => c.id === cId);
+        const progress = getProgress(cId);
+        const currentIndex = course.lessons.findIndex((l) => l.id === lId);
+        const isLastLesson = currentIndex === course.lessons.length - 1;
+        const allLessonsCompleted =
+          progress.completedLessons.length === course.lessons.length;
+        const linkArea = document.getElementById("quiz-link-area");
+
+        if (allLessonsCompleted && progress.quizScore === null) {
+          // All lessons done, but quiz pending
+          linkArea.innerHTML = `
+                <h3 class="text-2xl font-bold text-orange-600 mb-4">You're ready for the Final Quiz!</h3>
+                <a href="quiz.html?courseId=${cId}" class="bg-orange-600 text-white px-8 py-3 rounded-lg font-bold hover:bg-orange-700 transition">
+                    Start Final Quiz &rarr;
+                </a>
+            `;
+        } else if (allLessonsCompleted && progress.quizScore !== null) {
+          // Fully complete (lessons and quiz)
+          linkArea.innerHTML = `
+                <h3 class="text-2xl font-bold text-green-600 mb-4">Course Complete!</h3>
+                <a href="dashboard.html" class="bg-blue-600 text-white px-8 py-3 rounded-lg font-bold hover:bg-blue-700 transition">
+                    View Dashboard & Certificate &rarr;
+                </a>
+            `;
+        } else if (isLastLesson && !allLessonsCompleted) {
+          // Handle if a user jumps to the last lesson without completing previous ones
+          linkArea.innerHTML = `<p class="text-lg text-gray-600">Complete all previous lessons to move to the quiz.</p>`;
+        }
+      }
+
+      function markComplete() {
+        const completeBtn = document.getElementById("complete-btn");
+        if (completeBtn && completeBtn.disabled) return;
+
+        // 1. Mark lesson complete in local storage
+        if (!completeLesson(cId, lId)) {
+          alert("Error: Could not update progress.");
+          return;
+        }
+
+        const course = coursesData.find((c) => c.id === cId);
+        const currentIndex = course.lessons.findIndex((l) => l.id === lId);
+        const isLastLesson = currentIndex === course.lessons.length - 1;
+
+        // 2. Update button state
+        completeBtn.innerText = "Completed";
+        completeBtn.classList.remove("bg-green-600", "hover:bg-green-700");
+        completeBtn.classList.add(
+          "bg-green-500",
+          "hover:bg-green-600",
+          "cursor-not-allowed"
+        );
+        completeBtn.disabled = true;
+
+        // 3. Navigation Logic
+        if (!isLastLesson) {
+          const nextId = course.lessons[currentIndex + 1].id;
+          if (confirm("Lesson Completed! Go to the next lesson?")) {
+            // Use history.replaceState to prevent excessive history entries
+            window.location.replace(
+              `lesson.html?courseId=${cId}&lessonId=${nextId}`
+            );
+          } else {
+            location.reload(); // Refresh to update sidebar checkmark if not navigating
+          }
+        } else {
+          // Check if ALL lessons are now done (should be true since this is the last lesson index)
+          const progress = getProgress(cId);
+          if (progress.completedLessons.length === course.lessons.length) {
+            alert(
+              "Congratulations! All lessons are complete. Proceed to the Final Quiz."
+            );
+            window.location.replace(`quiz.html?courseId=${cId}`);
+          } else {
+            // Should not happen if data is structured correctly, but good to have a fallback
+            window.location.replace(`course-detail.html?id=${cId}`);
+          }
+        }
+      }
+    </script>
+  </body>
+</html>
