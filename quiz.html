@@ -29,7 +29,35 @@
       ></div>
     </div>
 
-    <script src="data.js"></script>
+    <!-- ======= courses-json-loader (insert BEFORE script.js) ======= -->
+    <script>
+      (function () {
+        try {
+          if (!localStorage.getItem("lmsCourses")) {
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", "courses.json", false); // synchronous on purpose for a small project
+            xhr.send(null);
+            if (xhr.status >= 200 && xhr.status < 300) {
+              localStorage.setItem("lmsCourses", xhr.responseText);
+            } else {
+              console.warn("courses.json load failed, status:", xhr.status);
+            }
+          }
+        } catch (e) {
+          console.error("Synchronous load of courses.json failed:", e);
+        }
+
+        try {
+          window.coursesData = JSON.parse(
+            localStorage.getItem("lmsCourses") || "[]"
+          );
+        } catch (e) {
+          console.error("Failed to parse lmsCourses from localStorage:", e);
+          window.coursesData = [];
+        }
+      })();
+    </script>
+    <!-- ================================================================ -->
     <script src="script.js"></script>
     <script>
       // Prevent unauthenticated access (must run after script.js is loaded)

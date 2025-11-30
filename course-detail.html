@@ -67,7 +67,35 @@
       <p>&copy; 2025 EduPro LMS. All rights reserved.</p>
     </footer>
 
-    <script src="data.js"></script>
+    <!-- ======= courses-json-loader (insert BEFORE script.js) ======= -->
+    <script>
+      (function () {
+        try {
+          if (!localStorage.getItem("lmsCourses")) {
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", "courses.json", false); // synchronous on purpose for a small project
+            xhr.send(null);
+            if (xhr.status >= 200 && xhr.status < 300) {
+              localStorage.setItem("lmsCourses", xhr.responseText);
+            } else {
+              console.warn("courses.json load failed, status:", xhr.status);
+            }
+          }
+        } catch (e) {
+          console.error("Synchronous load of courses.json failed:", e);
+        }
+
+        try {
+          window.coursesData = JSON.parse(
+            localStorage.getItem("lmsCourses") || "[]"
+          );
+        } catch (e) {
+          console.error("Failed to parse lmsCourses from localStorage:", e);
+          window.coursesData = [];
+        }
+      })();
+    </script>
+    <!-- ================================================================ -->
     <script src="script.js"></script>
     <script>
       const params = new URLSearchParams(window.location.search);
@@ -284,30 +312,6 @@
       }
 
       // --- Action Functions ---
-
-      window.enrollAndStart = function (courseId) {
-        // AUTH CHECK: Force login if guest
-        if (!getCurrentUser()) {
-          alert("You must be logged in to enroll.");
-          window.location.href = "login.html";
-          return;
-        }
-
-        if (!course || course.lessons.length === 0) {
-          alert("Cannot enroll: Course data missing or empty.");
-          return;
-        }
-
-        // Ensure the enrolled flag is set
-        enrollInCourse(courseId);
-
-        // You had previously auto-completed the first lesson when enrolling.
-        // Keep that behavior (if desired) — this makes sure the user is enrolled AND the first lesson is marked.
-        const firstLessonId = course.lessons[0].id;
-        completeLesson(courseId, firstLessonId);
-
-        window.location.href = `lesson.html?courseId=${courseId}&lessonId=${firstLessonId}`;
-      };
 
       window.viewCertificate = function (courseId) {
         const modal = document.getElementById("certificate-modal");

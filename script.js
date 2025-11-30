@@ -65,6 +65,36 @@ function requireAuth() {
 
 // --- Progress Utilities (Fully User-Specific) ---
 
+// Global helper: enroll a user in a course and navigate to the first lesson
+function enrollAndStart(courseId) {
+  // AUTH CHECK: Force login if guest
+  if (!getCurrentUser()) {
+    alert("You must be logged in to enroll.");
+    window.location.href = "login.html";
+    return;
+  }
+
+  const course = (window.coursesData || []).find(
+    (c) => c.id === Number(courseId)
+  );
+  if (!course) {
+    alert("Course not found.");
+    return;
+  }
+
+  // Mark enrolled
+  enrollInCourse(courseId);
+
+  // OPTIONAL: If you want to auto-complete the first lesson when enrolling, uncomment:
+  // completeLesson(courseId, course.lessons[0].id);
+
+  // Save last visited as first lesson (helps dashboard)
+  saveLastVisited(courseId, course.lessons[0].id);
+
+  // Navigate to first lesson
+  window.location.href = `lesson.html?courseId=${courseId}&lessonId=${course.lessons[0].id}`;
+}
+
 /**
  * 1️⃣ **NEW FUNCTION** required by dashboard.html to fetch all progress.
  * Retrieves the complete progress object {courseId: progressData, ...}
@@ -76,8 +106,6 @@ function getProgressDataForUser() {
   // Progress data is stored directly in the user object's 'progress' property
   return user ? user.progress : {};
 }
-
-
 
 function getProgress(courseId) {
   // Retrieves progress for a specific course for the current user.
@@ -160,7 +188,7 @@ function enrollInCourse(courseId) {
   if (!user) return false;
 
   const users = getUsers();
-  const idx = users.findIndex(u => u.email === user.email);
+  const idx = users.findIndex((u) => u.email === user.email);
   if (idx === -1) return false;
 
   if (!users[idx].progress) users[idx].progress = {};
@@ -170,7 +198,7 @@ function enrollInCourse(courseId) {
     users[idx].progress[key] = {
       enrolled: true,
       completedLessons: [],
-      quizScore: null
+      quizScore: null,
     };
   } else {
     // keep existing completedLessons/quizScore, just set enrolled flag
@@ -195,7 +223,9 @@ function getEnrolledCourseIdsForUser() {
     // consider enrolled if explicit flag set OR there's progress (lessons/quiz)
     return (
       (entry && entry.enrolled) ||
-      (entry && Array.isArray(entry.completedLessons) && entry.completedLessons.length > 0) ||
+      (entry &&
+        Array.isArray(entry.completedLessons) &&
+        entry.completedLessons.length > 0) ||
       (entry && entry.quizScore !== null && entry.quizScore !== undefined)
     );
   });
@@ -206,11 +236,16 @@ function saveLastVisited(courseId, lessonId) {
   const user = getCurrentUser();
   if (!user) return false;
   const users = getUsers();
-  const idx = users.findIndex(u => u.email === user.email);
+  const idx = users.findIndex((u) => u.email === user.email);
   if (idx === -1) return false;
   if (!users[idx].progress) users[idx].progress = {};
   const key = courseId.toString();
-  if (!users[idx].progress[key]) users[idx].progress[key] = { enrolled: true, completedLessons: [], quizScore: null };
+  if (!users[idx].progress[key])
+    users[idx].progress[key] = {
+      enrolled: true,
+      completedLessons: [],
+      quizScore: null,
+    };
   users[idx].progress[key].lastVisited = lessonId;
   saveUsers(users);
   return true;
