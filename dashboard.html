@@ -144,13 +144,13 @@
       <p>&copy; 2025 EduPro LMS. All rights reserved.</p>
     </footer>
 
-    <!-- ======= courses-json-loader (insert BEFORE script.js) ======= -->
+    <!-- ======= courses-json-loader (keeps previous pattern) ======= -->
     <script>
       (function () {
         try {
           if (!localStorage.getItem("lmsCourses")) {
             var xhr = new XMLHttpRequest();
-            xhr.open("GET", "courses.json", false); // synchronous on purpose for a small project
+            xhr.open("GET", "courses.json", false); // synchronous small project loader
             xhr.send(null);
             if (xhr.status >= 200 && xhr.status < 300) {
               localStorage.setItem("lmsCourses", xhr.responseText);
@@ -176,44 +176,51 @@
     <script src="script.js"></script>
 
     <script>
-      // --- DASHBOARD: user-scoped rendering (DO NOT redeclare globals from script.js) ---
-      const currentUser = getCurrentUser(); // provided by script.js
+      // Wait for DOM + script.js to be available
+      document.addEventListener("DOMContentLoaded", () => {
+        // helpers
+        function htmlToElement(html) {
+          const div = document.createElement("div");
+          div.innerHTML = html.trim();
+          return div.firstElementChild;
+        }
 
-      // helper: create element from HTML string
-      function htmlToElement(html) {
-        const div = document.createElement("div");
-        div.innerHTML = html.trim();
-        return div.firstElementChild;
-      }
-
-      if (!currentUser) {
-        // Not logged in -> show access denied
+        const currentUser =
+          typeof getCurrentUser === "function" ? getCurrentUser() : null;
         const header = document.getElementById("dashboard-header");
         const content = document.getElementById("dashboard-content");
-        header.innerHTML = "";
-        content.innerHTML = `
-            <div class="bg-white p-12 rounded-xl shadow-lg text-center my-10">
-              <i class="fas fa-lock text-6xl text-red-500 mb-4"></i>
-              <h2 class="text-3xl font-bold mb-2 text-gray-800">Access Denied</h2>
-              <p class="text-lg mb-6 text-gray-600">Please log in to view your personalized dashboard and course progress.</p>
-              <a href="login.html" class="bg-blue-600 text-white px-8 py-3 rounded-lg font-bold hover:bg-blue-700 transition shadow-md">
-                <i class="fas fa-sign-in-alt mr-2"></i> Go to Login
-              </a>
-            </div>
-          `;
-      } else {
+
+        if (!currentUser) {
+          // Not logged in -> show access denied
+          if (header) header.innerHTML = "";
+          if (content) {
+            content.innerHTML = `
+              <div class="bg-white p-12 rounded-xl shadow-lg text-center my-10">
+                <i class="fas fa-lock text-6xl text-red-500 mb-4"></i>
+                <h2 class="text-3xl font-bold mb-2 text-gray-800">Access Denied</h2>
+                <p class="text-lg mb-6 text-gray-600">Please log in to view your personalized dashboard and course progress.</p>
+                <a href="login.html" class="bg-blue-600 text-white px-8 py-3 rounded-lg font-bold hover:bg-blue-700 transition shadow-md">
+                  <i class="fas fa-sign-in-alt mr-2"></i> Go to Login
+                </a>
+              </div>
+            `;
+          }
+          return;
+        }
+
         // Logged in - render the dashboard for this user only
         const userName = currentUser.name || "Student";
-        document.getElementById("user-initial").innerText = userName
-          .charAt(0)
-          .toUpperCase();
-        document.getElementById(
-          "user-welcome"
-        ).innerText = `Welcome back, ${userName}`;
+        const initialEl = document.getElementById("user-initial");
+        const welcomeEl = document.getElementById("user-welcome");
+        if (initialEl) initialEl.innerText = userName.charAt(0).toUpperCase();
+        if (welcomeEl) welcomeEl.innerText = `Welcome back, ${userName}`;
 
-        setTimeout(() => {
-          // Use helper to only get courses this user is actually enrolled in
-          const userProgress = getProgressDataForUser() || {}; // keep for reading each course progress
+        // small init function to render user-specific content
+        function initDashboard() {
+          const userProgress =
+            typeof getProgressDataForUser === "function"
+              ? getProgressDataForUser()
+              : {};
           const enrolledIds =
             typeof getEnrolledCourseIdsForUser === "function"
               ? getEnrolledCourseIdsForUser()
@@ -221,48 +228,45 @@
 
           const container = document.getElementById("enrolled-grid");
           const nextGoalCard = document.getElementById("next-goal-card");
+          const totalEnrolledEl = document.getElementById("total-enrolled");
+          const totalCertsEl = document.getElementById("total-certs");
 
-          let certificates = 0;
-          let incompleteCourses = [];
+          const certContainer = document.getElementById("certificates-grid");
+          const verifyBtn = document.getElementById("verify-btn");
+          const verifyInput = document.getElementById("verify-input");
+          const verifyResult = document.getElementById("verify-result");
 
-          document.getElementById("total-enrolled").innerText =
-            enrolledIds.length;
+          if (totalEnrolledEl) totalEnrolledEl.innerText = enrolledIds.length;
+
+          // Render enrolled grid
+          if (!container) return;
+          container.innerHTML = "";
 
           if (enrolledIds.length === 0) {
             container.innerHTML = `
-            <div class="text-center py-10 bg-white rounded-lg border border-dashed border-gray-300">
-              <p class="text-gray-500 mb-4">You haven't started any courses yet, ${userName}.</p>
-              <a href="courses.html" class="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700">Browse Courses</a>
-            </div>
-          `;
-            document.getElementById("total-certs").innerText = 0;
+              <div class="text-center py-10 bg-white rounded-lg border border-dashed border-gray-300">
+                <p class="text-gray-500 mb-4">You haven't started any courses yet, ${userName}.</p>
+                <a href="courses.html" class="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700">Browse Courses</a>
+              </div>
+            `;
+            if (totalCertsEl) totalCertsEl.innerText = 0;
           } else {
-            container.innerHTML = "";
+            // Build each enrolled card
+            const incompleteCourses = [];
+            let certificatesCount = 0;
 
             enrolledIds.forEach((id) => {
               const courseId = parseInt(id, 10);
               if (!courseId) return;
-              const course = coursesData.find((c) => c.id === courseId);
+              const course = (window.coursesData || []).find(
+                (c) => c.id === courseId
+              );
               if (!course) return;
 
               const pData = userProgress[id] || {
                 completedLessons: [],
                 quizScore: null,
               };
-
-              // --- LAST VISITED ---
-              const lastId = pData.lastVisited || null;
-              const lastText =
-                lastId && course.lessons.find((l) => l.id === lastId)
-                  ? {
-                      text: `Last: ${
-                        course.lessons.find((l) => l.id === lastId).title
-                      }`,
-                      href: `lesson.html?courseId=${courseId}&lessonId=${lastId}`,
-                    }
-                  : { text: "Not started", href: null };
-
-              // Calculate percent using the user's pData (defensive, mirrors calculateCourseProgress)
               const totalLessons = (course.lessons || []).length;
               const hasQuiz =
                 Array.isArray(course.quiz) && course.quiz.length > 0;
@@ -285,11 +289,10 @@
                       100,
                       Math.floor((completedUnits / totalUnits) * 100)
                     );
-
               const passed =
                 pData.quizScore !== null && pData.quizScore >= PASS_SCORE;
 
-              if (passed) certificates++;
+              if (passed) certificatesCount++;
               else if (percent < 100)
                 incompleteCourses.push({
                   title: course.title,
@@ -297,94 +300,106 @@
                   percent,
                 });
 
-              let quizStatusHtml = "";
-              if (pData.quizScore !== null && pData.quizScore !== undefined) {
-                quizStatusHtml = `<span class="font-bold ${
-                  passed ? "text-green-600" : "text-red-500"
-                }">Quiz Score: ${pData.quizScore}/${
-                  (course.quiz || []).length
-                } ${passed ? "(Passed)" : "(Failed)"}</span>`;
-              } else if (percent === 100 && hasQuiz) {
-                quizStatusHtml = `<span class="font-bold text-orange-500">Quiz Pending!</span>`;
-              } else {
-                quizStatusHtml = `<span class="text-gray-500">Quiz Pending</span>`;
-              }
+              const lastId = pData.lastVisited || null;
+              const lastLessonTitle =
+                lastId && course.lessons.find((l) => l.id === lastId)
+                  ? course.lessons.find((l) => l.id === lastId).title
+                  : null;
+              const lastTextHtml = lastLessonTitle
+                ? `<a href="lesson.html?courseId=${courseId}&lessonId=${lastId}" class="hover:underline text-blue-600">Last: ${escapeHtml(
+                    lastLessonTitle
+                  )}</a>`
+                : "Not started";
 
-              container.innerHTML += `
-              <div class="bg-white border rounded-lg p-6 flex flex-col md:flex-row items-center gap-6 shadow-sm hover:shadow-md transition">
-                <img src="${
-                  course.image
-                }" class="w-full md:w-32 h-32 md:h-20 rounded object-cover">
-                <div class="flex-1 w-full">
-                  <h3 class="text-lg font-bold text-gray-800">${
-                    course.title
-                  }</h3>
-                  <p class="text-sm text-gray-500 mt-1">
-                    ${
-                      lastText.href
-                        ? `<a href="${lastText.href}" class="hover:underline text-blue-600">${lastText.text}</a>`
-                        : `${lastText.text}`
-                    }
-                  </p>
-                  <div class="w-full bg-gray-200 rounded-full h-2.5 mt-2 mb-1">
-                    <div class="bg-blue-600 h-2.5 rounded-full" style="width: ${percent}%"></div>
+              const quizStatusHtml =
+                pData.quizScore !== null && pData.quizScore !== undefined
+                  ? `<span class="font-bold ${
+                      passed ? "text-green-600" : "text-red-500"
+                    }">Quiz Score: ${pData.quizScore}/${
+                      (course.quiz || []).length
+                    } ${passed ? "(Passed)" : "(Failed)"}</span>`
+                  : percent === 100 && hasQuiz
+                  ? `<span class="font-bold text-orange-500">Quiz Pending!</span>`
+                  : `<span class="text-gray-500">Quiz Pending</span>`;
+
+              const cardHtml = `
+                <div class="bg-white border rounded-lg p-6 flex flex-col md:flex-row items-center gap-6 shadow-sm hover:shadow-md transition">
+                  <img src="${
+                    course.image || ""
+                  }" class="w-full md:w-32 h-32 md:h-20 rounded object-cover" alt="${escapeHtml(
+                course.title
+              )}">
+                  <div class="flex-1 w-full">
+                    <h3 class="text-lg font-bold text-gray-800">${escapeHtml(
+                      course.title
+                    )}</h3>
+                    <p class="text-sm text-gray-500 mt-1">${lastTextHtml}</p>
+                    <div class="w-full bg-gray-200 rounded-full h-2.5 mt-2 mb-1">
+                      <div class="bg-blue-600 h-2.5 rounded-full" style="width: ${percent}%"></div>
+                    </div>
+                    <div class="flex justify-between text-sm text-gray-600 mt-2">
+                      <span>${percent}% Complete</span>
+                      ${quizStatusHtml}
+                    </div>
                   </div>
-                  <div class="flex justify-between text-sm text-gray-600 mt-2">
-                    <span>${percent}% Complete</span>
-                    ${quizStatusHtml}
-                  </div>
+                  <a href="course-detail.html?id=${
+                    course.id
+                  }" class="w-full md:w-auto text-center px-6 py-2 border border-blue-600 text-blue-600 rounded hover:bg-blue-50 transition">
+                    ${percent === 100 ? "Review" : "Continue"}
+                  </a>
                 </div>
-                <a href="course-detail.html?id=${
-                  course.id
-                }" class="w-full md:w-auto text-center px-6 py-2 border border-blue-600 text-blue-600 rounded hover:bg-blue-50 transition">
-                  ${percent === 100 ? "Review" : "Continue"}
-                </a>
-              </div>
-            `;
+              `;
+              container.insertAdjacentHTML("beforeend", cardHtml);
             });
 
-            document.getElementById("total-certs").innerText = certificates;
+            if (totalCertsEl) totalCertsEl.innerText = certificatesCount;
+
+            // Next goal card
+            if (incompleteCourses.length > 0) {
+              incompleteCourses.sort((a, b) => a.percent - b.percent);
+              const nextCourse = incompleteCourses[0];
+              if (nextGoalCard) {
+                nextGoalCard.innerHTML = `
+                  <div class="text-center">
+                    <p class="text-gray-500 mb-2">Next Step: <strong>${escapeHtml(
+                      nextCourse.title
+                    )}</strong></p>
+                    <a href="course-detail.html?id=${
+                      nextCourse.id
+                    }" class="text-blue-600 font-bold hover:underline">
+                      Continue at ${nextCourse.percent}% &rarr;
+                    </a>
+                  </div>
+                `;
+              }
+            } else if (
+              certificatesCount > 0 &&
+              certificatesCount === enrolledIds.length &&
+              enrolledIds.length > 0
+            ) {
+              if (nextGoalCard) {
+                nextGoalCard.innerHTML = `
+                  <div class="text-center">
+                    <p class="text-green-600 mb-2 font-bold">All Courses Completed! 🥳</p>
+                    <a href="courses.html" class="text-blue-600 font-bold hover:underline">Explore Advanced Courses &rarr;</a>
+                  </div>
+                `;
+              }
+            } else {
+              if (nextGoalCard) {
+                nextGoalCard.innerHTML = `
+                  <div class="text-center">
+                    <p class="text-gray-500 mb-2">Next Goal</p>
+                    <a href="courses.html" class="text-blue-600 font-bold hover:underline">Find a new course &rarr;</a>
+                  </div>
+                `;
+              }
+            }
           }
 
-          // Next goal
-          if (incompleteCourses.length > 0) {
-            incompleteCourses.sort((a, b) => a.percent - b.percent);
-            const nextCourse = incompleteCourses[0];
-            nextGoalCard.innerHTML = `
-            <div class="text-center">
-              <p class="text-gray-500 mb-2">Next Step: <strong>${nextCourse.title}</strong></p>
-              <a href="course-detail.html?id=${nextCourse.id}" class="text-blue-600 font-bold hover:underline">
-                Continue at ${nextCourse.percent}% &rarr;
-              </a>
-            </div>
-          `;
-          } else if (
-            certificates > 0 &&
-            certificates === enrolledIds.length &&
-            enrolledIds.length > 0
-          ) {
-            nextGoalCard.innerHTML = `
-            <div class="text-center">
-              <p class="text-green-600 mb-2 font-bold">All Courses Completed! 🥳</p>
-              <a href="courses.html" class="text-blue-600 font-bold hover:underline">Explore Advanced Courses &rarr;</a>
-            </div>
-          `;
-          } else {
-            nextGoalCard.innerHTML = `
-            <div class="text-center">
-              <p class="text-gray-500 mb-2">Next Goal</p>
-              <a href="courses.html" class="text-blue-600 font-bold hover:underline">Find a new course &rarr;</a>
-            </div>
-          `;
-          }
-
-          // -------------------------
-          // Certificates rendering
-          // -------------------------
-          const certContainer = document.getElementById("certificates-grid");
+          // Certificates rendering using centralized helper
+          if (!certContainer) return;
           certContainer.innerHTML = "";
-
-          // Use helper from script.js
           const certs =
             typeof listCertificatesForUser === "function"
               ? listCertificatesForUser()
@@ -397,181 +412,263 @@
                 <a href="courses.html" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Browse Courses</a>
               </div>
             `;
-            document.getElementById("total-certs").innerText = 0;
+            if (totalCertsEl) totalCertsEl.innerText = 0;
           } else {
-            document.getElementById("total-certs").innerText = certs.length;
+            if (totalCertsEl) totalCertsEl.innerText = certs.length;
             certs.forEach((cert) => {
-              // cert: { id, issuedOn, score, courseId, courseTitle, issuer }
               const issuedDate = new Date(cert.issuedOn).toLocaleDateString();
+              const safeId = cert.id.replace(/["'<>]/g, ""); // keep simple safety for attribute insertion
               const cardHtml = `
                 <div class="bg-white p-4 rounded-lg shadow-sm flex flex-col justify-between">
                   <div>
-                    <h3 class="font-bold text-gray-800">${cert.courseTitle}</h3>
+                    <h3 class="font-bold text-gray-800">${escapeHtml(
+                      cert.courseTitle || ""
+                    )}</h3>
                     <p class="text-sm text-gray-500 mt-1">Issued: <strong>${issuedDate}</strong></p>
-                    <p class="text-sm text-gray-500 mt-1">Score: <strong>${cert.score}</strong></p>
-                    <p class="text-xs text-gray-400 mt-3 break-words">Certificate ID: <span class="font-mono" id="cid-${cert.id}">${cert.id}</span></p>
+                    <p class="text-sm text-gray-500 mt-1">Score: <strong>${escapeHtml(
+                      String(cert.score)
+                    )}</strong></p>
+                    <p class="text-xs text-gray-400 mt-3 break-words">Certificate ID: <span class="font-mono" data-cert-id="${safeId}">${escapeHtml(
+                cert.id
+              )}</span></p>
                   </div>
                   <div class="mt-4 flex gap-2">
-                    <button onclick="downloadCertificatePDF(${cert.courseId})" class="flex-1 bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700 text-sm"><i class="fas fa-download mr-2"></i>Download PDF</button>
-                    <button onclick="printCertificate(${cert.courseId})" class="bg-gray-800 text-white px-3 py-2 rounded hover:bg-gray-900 text-sm"><i class="fas fa-print mr-2"></i>Print</button>
-                    <button onclick="openCertPreview('${cert.id}')" class="bg-indigo-600 text-white px-3 py-2 rounded hover:bg-indigo-700 text-sm"><i class="fas fa-eye mr-2"></i>View</button>
-                    <button onclick="copyCertId('${cert.id}')" class="bg-white border border-gray-200 px-3 py-2 rounded hover:bg-gray-50 text-sm"><i class="fas fa-clipboard mr-1"></i></button>
+                    <button data-course-id="${
+                      cert.courseId
+                    }" data-cert-id="${safeId}" class="cert-download-btn flex-1 bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700 text-sm"><i class="fas fa-download mr-2"></i>Download PDF</button>
+                    <button data-course-id="${
+                      cert.courseId
+                    }" data-cert-id="${safeId}" class="cert-print-btn bg-gray-800 text-white px-3 py-2 rounded hover:bg-gray-900 text-sm"><i class="fas fa-print mr-2"></i>Print</button>
+                    <button data-cert-id="${safeId}" class="cert-view-btn bg-indigo-600 text-white px-3 py-2 rounded hover:bg-indigo-700 text-sm"><i class="fas fa-eye mr-2"></i>View</button>
+                    <button data-cert-id="${safeId}" class="cert-copy-btn bg-white border border-gray-200 px-3 py-2 rounded hover:bg-gray-50 text-sm"><i class="fas fa-clipboard mr-1"></i></button>
                   </div>
                 </div>
               `;
-              certContainer.appendChild(htmlToElement(cardHtml));
+              certContainer.insertAdjacentHTML("beforeend", cardHtml);
+            });
+
+            // Wire certificate buttons (delegated)
+            certContainer
+              .querySelectorAll(".cert-download-btn")
+              .forEach((btn) => {
+                btn.addEventListener("click", (e) => {
+                  const courseId = Number(btn.dataset.courseId);
+                  if (typeof downloadCertificatePDF === "function") {
+                    downloadCertificatePDF(courseId);
+                  } else {
+                    alert("Download not available.");
+                  }
+                });
+              });
+            certContainer.querySelectorAll(".cert-print-btn").forEach((btn) => {
+              btn.addEventListener("click", () => {
+                const courseId = Number(btn.dataset.courseId);
+                if (typeof printCertificate === "function") {
+                  printCertificate(courseId);
+                } else {
+                  window.print();
+                }
+              });
+            });
+            certContainer.querySelectorAll(".cert-view-btn").forEach((btn) => {
+              btn.addEventListener("click", () => {
+                const certId = btn.dataset.certId;
+                openCertPreview(certId);
+              });
+            });
+            certContainer.querySelectorAll(".cert-copy-btn").forEach((btn) => {
+              btn.addEventListener("click", () => {
+                const certId = btn.dataset.certId;
+                copyCertId(certId);
+              });
             });
           }
 
-          // verify button
-          const verifyBtn = document.getElementById("verify-btn");
-          const verifyInput = document.getElementById("verify-input");
-          const verifyResult = document.getElementById("verify-result");
-
-          verifyBtn.addEventListener("click", () => {
-            const id = verifyInput.value.trim();
-            if (!id) {
-              verifyResult.innerHTML = `<span class="text-red-500">Please enter a certificate ID.</span>`;
-              return;
-            }
-            // we can use the global helper getUsers() to search
-            const users = typeof getUsers === "function" ? getUsers() : [];
-            let found = null;
-            for (const u of users) {
-              if (!u.progress) continue;
-              for (const k of Object.keys(u.progress)) {
-                const entry = u.progress[k];
-                if (!entry || !Array.isArray(entry.certificates)) continue;
-                const f = entry.certificates.find((c) => c.id === id);
-                if (f) {
-                  found = { cert: f, user: u };
-                  break;
-                }
+          // VERIFY button wiring (uses centralized verifyCertificate)
+          if (verifyBtn && verifyInput && verifyResult) {
+            verifyBtn.addEventListener("click", () => {
+              const id = (verifyInput.value || "").trim();
+              if (!id) {
+                verifyResult.innerHTML = `<span class="text-red-500">Please enter a certificate ID.</span>`;
+                return;
               }
-              if (found) break;
-            }
-
-            if (!found) {
-              verifyResult.innerHTML = `<div class="text-red-600 font-bold">Certificate not found or invalid.</div>`;
-            } else {
-              verifyResult.innerHTML = `
-                <div class="text-green-600 font-bold">Valid Certificate</div>
-                <div class="text-sm text-gray-700 mt-2">Course: <strong>${
-                  found.cert.courseTitle
-                }</strong></div>
-                <div class="text-sm text-gray-700">Student: <strong>${
-                  found.user.name
-                }</strong></div>
-                <div class="text-sm text-gray-700">Issued: <strong>${new Date(
-                  found.cert.issuedOn
-                ).toLocaleDateString()}</strong></div>
-                <div class="text-sm text-gray-700">Score: <strong>${
-                  found.cert.score
-                }</strong></div>
-              `;
-            }
-          });
-
-          // utility functions used by certificate buttons
-          window.copyCertId = function (id) {
-            if (!navigator.clipboard) {
-              // fallback
-              const el = document.getElementById(`cid-${id}`);
-              if (el) {
-                const range = document.createRange();
-                range.selectNode(el);
-                window.getSelection().removeAllRanges();
-                window.getSelection().addRange(range);
-                try {
-                  document.execCommand("copy");
-                  alert("Certificate ID copied to clipboard.");
-                } catch (e) {
-                  alert("Copy failed. Please select and copy manually.");
-                }
-                window.getSelection().removeAllRanges();
-              }
-              return;
-            }
-            navigator.clipboard.writeText(id).then(
-              () => {
-                // small feedback
-                const btnLabel = document.getElementById(`cid-${id}`);
-                // show toast (simple)
-                alert("Certificate ID copied to clipboard.");
-              },
-              () => {
-                alert("Copy failed — please copy manually.");
-              }
-            );
-          };
-
-          window.openCertPreview = function (certId) {
-            // find certificate among user's certs (we already have 'certs')
-            const c = certs.find((x) => x.id === certId);
-            if (!c) {
-              alert("Certificate not found.");
-              return;
-            }
-            // Populate preview modal with the certificate data
-            const modal = document.getElementById("cert-preview-modal");
-            document.getElementById("cp-course").innerText = c.courseTitle;
-            document.getElementById("cp-issued").innerText = new Date(
-              c.issuedOn
-            ).toLocaleDateString();
-            document.getElementById("cp-score").innerText = `${c.score}`;
-            document.getElementById("cp-id").innerText = c.id;
-            // set data attributes for action buttons
-            document.getElementById("cp-download-btn").onclick = () =>
-              downloadCertificatePDF(c.courseId);
-            document.getElementById("cp-print-btn").onclick = () =>
-              printCertificate(c.courseId);
-            document.getElementById("cp-verify-btn").onclick = () => {
-              // perform local verification (no alert)
-              const res = (function (id) {
-                const users = typeof getUsers === "function" ? getUsers() : [];
-                for (const u of users) {
-                  if (!u.progress) continue;
-                  for (const k of Object.keys(u.progress)) {
-                    const entry = u.progress[k];
-                    if (!entry || !Array.isArray(entry.certificates)) continue;
-                    const found = entry.certificates.find((cc) => cc.id === id);
-                    if (found) return { cert: found, user: u };
-                  }
-                }
-                return null;
-              })(c.id);
-              const area = document.getElementById("cp-verify-result");
-              if (!res) {
-                area.innerHTML = `<span class="text-red-600">Not verified</span>`;
+              // Prefer centralized verifyCertificate helper
+              const res =
+                typeof verifyCertificate === "function"
+                  ? verifyCertificate(id)
+                  : null;
+              if (!res || !res.valid) {
+                verifyResult.innerHTML = `<div class="text-red-600 font-bold">Certificate not found or invalid.</div>`;
               } else {
-                area.innerHTML = `<span class="text-green-600 font-bold">Verified</span><div class="text-sm text-gray-700 mt-2">Student: <strong>${
-                  res.user.name
-                }</strong><br/>Issued: <strong>${new Date(
-                  res.cert.issuedOn
-                ).toLocaleDateString()}</strong></div>`;
+                verifyResult.innerHTML = `
+                  <div class="text-green-600 font-bold">Valid Certificate</div>
+                  <div class="text-sm text-gray-700 mt-2">Course: <strong>${escapeHtml(
+                    res.certificate.courseTitle
+                  )}</strong></div>
+                  <div class="text-sm text-gray-700">Student: <strong>${escapeHtml(
+                    res.studentName
+                  )}</strong></div>
+                  <div class="text-sm text-gray-700">Issued: <strong>${new Date(
+                    res.certificate.issuedOn
+                  ).toLocaleDateString()}</strong></div>
+                  <div class="text-sm text-gray-700">Score: <strong>${escapeHtml(
+                    String(res.certificate.score)
+                  )}</strong></div>
+                `;
+              }
+            });
+          }
+        } // end initDashboard
+
+        // small utilities used by the dashboard (safe, centralized)
+        function copyCertId(id) {
+          if (!id) return;
+          const text = id;
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(
+              () => alert("Certificate ID copied to clipboard."),
+              () => fallbackCopy(text)
+            );
+          } else {
+            fallbackCopy(text);
+          }
+        }
+        function fallbackCopy(text) {
+          // fallback using temporary textarea
+          const ta = document.createElement("textarea");
+          ta.value = text;
+          ta.style.position = "fixed";
+          ta.style.left = "-9999px";
+          document.body.appendChild(ta);
+          ta.select();
+          try {
+            document.execCommand("copy");
+            alert("Certificate ID copied to clipboard.");
+          } catch (e) {
+            prompt("Copy this certificate ID:", text);
+          }
+          ta.remove();
+        }
+
+        function openCertPreview(certId) {
+          if (!certId) {
+            alert("Certificate ID missing.");
+            return;
+          }
+          // use centralized finder
+          const found =
+            typeof findCertificateById === "function"
+              ? findCertificateById(certId)
+              : null;
+          if (!found || !found.valid) {
+            alert("Certificate not found.");
+            return;
+          }
+
+          // populate modal (existing markup present at bottom of page)
+          const modal = document.getElementById("cert-preview-modal");
+          if (!modal) {
+            alert("Preview modal not found.");
+            return;
+          }
+
+          const cpCourse = document.getElementById("cp-course");
+          const cpIssued = document.getElementById("cp-issued");
+          const cpScore = document.getElementById("cp-score");
+          const cpId = document.getElementById("cp-id");
+          const cpVerifyResult = document.getElementById("cp-verify-result");
+          const downloadBtn = document.getElementById("cp-download-btn");
+          const printBtn = document.getElementById("cp-print-btn");
+          const verifyBtnModal = document.getElementById("cp-verify-btn");
+
+          if (cpCourse) cpCourse.innerText = found.cert.courseTitle || "";
+          if (cpIssued)
+            cpIssued.innerText = new Date(
+              found.cert.issuedOn
+            ).toLocaleDateString();
+          if (cpScore) cpScore.innerText = `${found.cert.score}`;
+          if (cpId) cpId.innerText = found.cert.id;
+          if (cpVerifyResult) cpVerifyResult.innerHTML = "";
+
+          if (downloadBtn) {
+            downloadBtn.onclick = () => {
+              if (typeof downloadCertificatePDF === "function")
+                downloadCertificatePDF(found.cert.courseId);
+            };
+          }
+          if (printBtn) {
+            printBtn.onclick = () => {
+              if (typeof printCertificate === "function")
+                printCertificate(found.cert.courseId);
+            };
+          }
+          if (verifyBtnModal) {
+            verifyBtnModal.onclick = () => {
+              // re-verify using centralized method
+              const r =
+                typeof verifyCertificate === "function"
+                  ? verifyCertificate(found.cert.id)
+                  : null;
+              if (!r || !r.valid) {
+                if (cpVerifyResult)
+                  cpVerifyResult.innerHTML = `<span class="text-red-600">Not verified</span>`;
+              } else {
+                if (cpVerifyResult)
+                  cpVerifyResult.innerHTML = `<span class="text-green-600 font-bold">Verified</span><div class="text-sm text-gray-700 mt-2">Student: <strong>${escapeHtml(
+                    r.studentName
+                  )}</strong><br/>Issued: <strong>${new Date(
+                    r.certificate.issuedOn
+                  ).toLocaleDateString()}</strong></div>`;
               }
             };
-            modal.classList.remove("hidden");
-            modal.classList.add("flex");
-          };
+          }
 
-          // close modal helper
-          const closePreview = () => {
+          // show modal
+          modal.classList.remove("hidden");
+          modal.classList.add("flex");
+        }
+
+        // close preview handlers
+        const cpCloseBtn = document.getElementById("cp-close-btn");
+        if (cpCloseBtn) {
+          cpCloseBtn.addEventListener("click", () => {
             const modal = document.getElementById("cert-preview-modal");
-            modal.classList.add("hidden");
-            modal.classList.remove("flex");
-            document.getElementById("cp-verify-result").innerHTML = "";
-          };
+            if (modal) {
+              modal.classList.add("hidden");
+              modal.classList.remove("flex");
+              const area = document.getElementById("cp-verify-result");
+              if (area) area.innerHTML = "";
+            }
+          });
+        }
+        const cpCopyBtn = document.getElementById("cp-copy-id-btn");
+        if (cpCopyBtn) {
+          cpCopyBtn.addEventListener("click", () => {
+            const idNode = document.getElementById("cp-id");
+            if (idNode) copyCertId(idNode.innerText || "");
+          });
+        }
 
-          document.getElementById("cp-close-btn").onclick = closePreview;
-          document.getElementById("cp-copy-id-btn").onclick = function () {
-            const id = document.getElementById("cp-id").innerText;
-            if (!id) return;
-            navigator.clipboard
-              ?.writeText(id)
-              .then(() => alert("Copied certificate ID"));
-          };
-        }, 50);
+        // Kick off initial render
+        initDashboard();
+
+        // Mobile menu toggle (kept)
+        const mmBtn = document.getElementById("mobile-menu-btn");
+        const mm = document.getElementById("mobile-menu");
+        if (mmBtn && mm) {
+          mmBtn.addEventListener("click", () => mm.classList.toggle("hidden"));
+        }
+      });
+
+      // simple escape helper used above
+      function escapeHtml(str) {
+        if (typeof str !== "string") return str;
+        return str
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
       }
     </script>
 
