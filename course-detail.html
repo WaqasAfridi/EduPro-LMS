@@ -11,28 +11,7 @@
       rel="stylesheet"
     />
 
-    <!-- html2canvas and jsPDF for certificate download -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-
     <style>
-      /* Print only certificate modal */
-      @media print {
-        body * {
-          visibility: hidden !important;
-        }
-        #certificate-content,
-        #certificate-content * {
-          visibility: visible !important;
-        }
-        #certificate-content {
-          position: absolute;
-          left: 0;
-          top: 0;
-          width: 100%;
-        }
-      }
-
       /* small animation */
       .fade-in {
         animation: fadeIn 0.32s ease both;
@@ -52,6 +31,14 @@
       .focus-ring:focus {
         outline: 3px solid rgba(59, 130, 246, 0.35);
         outline-offset: 2px;
+      }
+
+      /* modal utilities */
+      .modal-hidden {
+        display: none;
+      }
+      .modal-flex {
+        display: flex;
       }
     </style>
   </head>
@@ -145,7 +132,7 @@
 
     <script>
       /* ------------------------------------------------------------
-         Course Detail page: enhanced features + rich certificate modal
+         Course Detail page: cleaned certificate wiring and central APIs
          ------------------------------------------------------------ */
 
       // Helpers
@@ -169,8 +156,6 @@
 
       // Defensive: require course exists
       const course = (window.coursesData || []).find((c) => c.id === cId);
-
-      // If requesting certificate verification via certId in URL, we handle below after UI renders.
 
       // Render UI
       function renderCourseDetail() {
@@ -368,10 +353,32 @@
 
         // Post-render wiring:
         setupCurriculumControls();
-        showCertificateButtonIfEligible();
-        // If certId present in URL, auto-verify/show
+        wireCertificateButton(); // attach cert UI if present
+
+        // If certId present in URL, try to show a verification modal (read-only) after render
         if (certIdQuery) {
-          setTimeout(() => verifyAndShowCert(certIdQuery), 400);
+          setTimeout(() => {
+            // use centralized search
+            try {
+              const found =
+                typeof findCertificateById === "function"
+                  ? findCertificateById(certIdQuery)
+                  : null;
+              if (!found || !found.valid) {
+                alert("Certificate not found or invalid.");
+                return;
+              }
+              // Ensure it belongs to this course (defensive)
+              if (found.cert.courseId !== cId) {
+                alert("Certificate does not correspond to this course.");
+                return;
+              }
+              // open modal populated with that certificate
+              openCertificateModalForRecord(found.cert, found.user);
+            } catch (e) {
+              console.warn("verify flow failed", e);
+            }
+          }, 400);
         }
       }
 
@@ -395,432 +402,269 @@
         // prefill notes if any
         try {
           const existing = localStorage.getItem(notesKey(cId));
-          if (existing) notesTextarea.value = existing;
+          if (existing && notesTextarea) notesTextarea.value = existing;
         } catch (e) {}
 
-        btnNotesToggle.addEventListener("click", () => {
-          notesArea.classList.toggle("hidden");
-        });
+        if (btnNotesToggle && notesArea) {
+          btnNotesToggle.addEventListener("click", () => {
+            notesArea.classList.toggle("hidden");
+          });
+        }
 
-        btnSaveNotes.addEventListener("click", () => {
-          try {
-            localStorage.setItem(notesKey(cId), notesTextarea.value || "");
-            alert("Notes saved locally in your browser.");
-          } catch (e) {
-            console.warn("Failed to save notes:", e);
-            alert("Could not save notes (localStorage blocked).");
-          }
-        });
+        if (btnSaveNotes) {
+          btnSaveNotes.addEventListener("click", () => {
+            try {
+              localStorage.setItem(notesKey(cId), notesTextarea.value || "");
+              alert("Notes saved locally in your browser.");
+            } catch (e) {
+              console.warn("Failed to save notes:", e);
+              alert("Could not save notes (localStorage blocked).");
+            }
+          });
+        }
 
-        btnClearNotes.addEventListener("click", () => {
-          if (!confirm("Clear your notes for this course?")) return;
-          notesTextarea.value = "";
-          localStorage.removeItem(notesKey(cId));
-          alert("Notes cleared.");
-        });
+        if (btnClearNotes) {
+          btnClearNotes.addEventListener("click", () => {
+            if (!confirm("Clear your notes for this course?")) return;
+            notesTextarea.value = "";
+            localStorage.removeItem(notesKey(cId));
+            alert("Notes cleared.");
+          });
+        }
 
-        btnBookmark.addEventListener("click", () => {
-          if (!currentUser) {
-            alert("Please log in to bookmark this course.");
-            return;
-          }
-          const bmKey = `bookmarks_${currentUser.email}`;
-          const existing = JSON.parse(localStorage.getItem(bmKey) || "[]");
-          if (existing.includes(cId)) {
-            alert("Course already bookmarked.");
-            return;
-          }
-          existing.push(cId);
-          localStorage.setItem(bmKey, JSON.stringify(existing));
-          alert(
-            "Bookmarked! You can find it on your dashboard (if implemented)."
-          );
-        });
+        if (btnBookmark) {
+          btnBookmark.addEventListener("click", () => {
+            if (!currentUser) {
+              alert("Please log in to bookmark this course.");
+              return;
+            }
+            const bmKey = `bookmarks_${currentUser.email}`;
+            const existing = JSON.parse(localStorage.getItem(bmKey) || "[]");
+            if (existing.includes(cId)) {
+              alert("Course already bookmarked.");
+              return;
+            }
+            existing.push(cId);
+            localStorage.setItem(bmKey, JSON.stringify(existing));
+            alert(
+              "Bookmarked! You can find it on your dashboard (if implemented)."
+            );
+          });
+        }
 
         // Resume button
-        btnResume.addEventListener("click", () => {
-          const last = getLastVisited && getLastVisited(cId);
-          if (last) {
-            window.location.href = `lesson.html?courseId=${cId}&lessonId=${last}`;
-          } else {
-            window.location.href = `lesson.html?courseId=${cId}&lessonId=${
-              course.lessons?.[0]?.id || 1
-            }`;
-          }
-        });
+        if (btnResume) {
+          btnResume.addEventListener("click", () => {
+            const last = getLastVisited && getLastVisited(cId);
+            if (last) {
+              window.location.href = `lesson.html?courseId=${cId}&lessonId=${last}`;
+            } else {
+              window.location.href = `lesson.html?courseId=${cId}&lessonId=${
+                course.lessons?.[0]?.id || 1
+              }`;
+            }
+          });
+        }
 
         // search filter
-        searchInput.addEventListener("input", (e) => {
-          const q = (e.target.value || "").toLowerCase();
-          const nodes = lessonsList.querySelectorAll("a");
-          nodes.forEach((node) => {
-            const text = node.innerText.toLowerCase();
-            node.style.display = text.includes(q) ? "" : "none";
+        if (searchInput) {
+          searchInput.addEventListener("input", (e) => {
+            const q = (e.target.value || "").toLowerCase();
+            const nodes = lessonsList.querySelectorAll("a");
+            nodes.forEach((node) => {
+              const text = node.innerText.toLowerCase();
+              node.style.display = text.includes(q) ? "" : "none";
+            });
           });
-        });
-      }
-
-      // certificate management
-      function showCertificateButtonIfEligible() {
-        const progress = getProgress ? getProgress(cId) : {};
-        const quizScore =
-          progress.quizScore !== null && progress.quizScore !== undefined
-            ? progress.quizScore
-            : null;
-        const progPercent =
-          typeof calculateCourseProgress === "function"
-            ? calculateCourseProgress(cId)
-            : 0;
-        // eligible if progress 100% and quiz passed
-        if (
-          progPercent === 100 &&
-          quizScore !== null &&
-          quizScore >= PASS_SCORE
-        ) {
-          // show certificate controls
-          const btn =
-            document.getElementById("btn-view-cert") ||
-            document.getElementById("btn-open-certificate");
-          if (btn) {
-            btn.classList.remove("hidden");
-            btn.addEventListener("click", () => openCertificateModal());
-          }
         }
       }
 
-      // Certificate storage helpers
-      function certificatesKey() {
-        return `edupro_certificates`;
-      }
+      // Wire certificate button (reads centralized progress/cert records)
+      function wireCertificateButton() {
+        const btn = document.getElementById("btn-view-cert");
+        if (!btn) return;
 
-      function saveCertificateMeta(meta) {
-        try {
-          const key = certificatesKey();
-          const all = JSON.parse(localStorage.getItem(key) || "{}");
-          all[meta.certId] = meta;
-          localStorage.setItem(key, JSON.stringify(all));
-        } catch (e) {
-          console.error("saveCertificateMeta error", e);
-        }
-      }
-
-      function getCertificateMeta(certId) {
-        try {
-          const all = JSON.parse(
-            localStorage.getItem(certificatesKey()) || "{}"
-          );
-          return all[certId] || null;
-        } catch (e) {
-          return null;
-        }
-      }
-
-      // Generate unique certId - deterministic-ish
-      function generateCertId(userEmail, courseId) {
-        const raw = `${userEmail}::${courseId}::${Date.now()}`;
-        // simple base64-ish id (URL safe)
-        return btoa(unescape(encodeURIComponent(raw)))
-          .replace(/\+/g, "-")
-          .replace(/\//g, "_")
-          .replace(/=+$/, "");
-      }
-
-      // Build certificate modal content + functions
-      function openCertificateModal(autoCertId = null) {
-        const modal = document.getElementById("certificate-modal");
-        const content = document.getElementById("certificate-preview");
-        const user = currentUser || { name: "Student", email: "guest" };
-        const p = getProgress ? getProgress(cId) : {};
-        const qScore = p.quizScore !== undefined ? p.quizScore : null;
-        const totalQ = Array.isArray(course.quiz) ? course.quiz.length : 0;
-
-        // populate dynamic fields
-        document.getElementById("cert-student-name").value =
-          user.name || "Student";
-        document.getElementById("cert-course-title").innerText = course.title;
-        document.getElementById("cert-date").innerText =
-          new Date().toLocaleDateString(undefined, {
-            year: "numeric",
-            month: "long",
-            day: "numeric",
-          });
-        document.getElementById("cert-score").innerText = `${
-          qScore || 0
-        }/${totalQ}`;
-
-        // If autoCertId provided (from verify link) try to load name from meta
-        if (autoCertId) {
-          const meta = getCertificateMeta(autoCertId);
-          if (meta) {
-            document.getElementById("cert-student-name").value =
-              meta.studentName ||
-              (currentUser && currentUser.name) ||
-              "Student";
-          }
-        }
-
-        modal.classList.remove("hidden");
-        setTimeout(() => modal.classList.add("fade-in"), 20);
-
-        // Wire modal buttons (they can be clicked many times; ensure idempotency)
-        const btnDownloadPDF = document.getElementById("cert-download-pdf");
-        const btnDownloadPNG = document.getElementById("cert-download-png");
-        const btnPrint = document.getElementById("cert-print");
-        const btnSaveMeta = document.getElementById("cert-save-meta");
-        const btnCopyLink = document.getElementById("cert-copy-link");
-
-        // remove previous listeners by cloning nodes (simple detach technique)
-        [
-          btnDownloadPDF,
-          btnDownloadPNG,
-          btnPrint,
-          btnSaveMeta,
-          btnCopyLink,
-        ].forEach((btn) => {
-          const clone = btn.cloneNode(true);
-          btn.parentNode.replaceChild(clone, btn);
-        });
-
-        // re-get after replace
-        const dPDF = document.getElementById("cert-download-pdf");
-        const dPNG = document.getElementById("cert-download-png");
-        const pBtn = document.getElementById("cert-print");
-        const sMeta = document.getElementById("cert-save-meta");
-        const cLink = document.getElementById("cert-copy-link");
-
-        dPDF.addEventListener("click", () => downloadCertificate("pdf"));
-        dPNG.addEventListener("click", () => downloadCertificate("png"));
-        pBtn.addEventListener("click", () => window.print());
-        sMeta.addEventListener("click", () => {
-          const name =
-            document.getElementById("cert-student-name").value ||
-            (currentUser && currentUser.name) ||
-            "Student";
-          const certId = generateCertId(
-            currentUser ? currentUser.email : "guest",
-            cId
-          );
-          const meta = {
-            certId,
-            courseId: cId,
-            studentName: name,
-            userEmail: currentUser ? currentUser.email : null,
-            score: qScore,
-            date: new Date().toISOString(),
-          };
-          saveCertificateMeta(meta);
-          // also store certId on user's progress so course-detail/dashboard can mark it
-          const prog = getProgress(cId);
-          prog.certificateId = certId;
-          saveUserProgress(cId, prog);
-          // dispatch event for UI updates
-          window.dispatchEvent(
-            new CustomEvent("progressUpdated", {
-              detail: { courseId: cId, certificateId: certId },
-            })
-          );
-          alert(
-            "Certificate saved. You can now share or verify it using the link."
-          );
-        });
-        cLink.addEventListener("click", async () => {
-          // ensure saved meta exists
-          const name =
-            document.getElementById("cert-student-name").value ||
-            (currentUser && currentUser.name) ||
-            "Student";
-          let certId = null;
-          // if progress has certificateId use it
-          const prog = getProgress(cId);
-          if (prog && prog.certificateId) certId = prog.certificateId;
-          if (!certId) {
-            certId = generateCertId(
-              currentUser ? currentUser.email : "guest",
-              cId
-            );
-            const meta = {
-              certId,
-              courseId: cId,
-              studentName: name,
-              userEmail: currentUser ? currentUser.email : null,
-              score: qScore,
-              date: new Date().toISOString(),
-            };
-            saveCertificateMeta(meta);
-            // attach to user progress
-            if (prog) {
-              prog.certificateId = certId;
-              saveUserProgress(cId, prog);
-              window.dispatchEvent(
-                new CustomEvent("progressUpdated", {
-                  detail: { courseId: cId, certificateId: certId },
-                })
-              );
-            }
-          }
-          const url = `${location.origin}${location.pathname}?id=${cId}&certId=${certId}`;
+        btn.addEventListener("click", () => {
+          // Use current user's progress to find certificate record (last one)
           try {
-            await navigator.clipboard.writeText(url);
-            alert(
-              "Certificate link copied to clipboard. Paste it to share or verify."
-            );
+            const progress = getProgress ? getProgress(cId) : {};
+            const certificates =
+              progress && Array.isArray(progress.certificates)
+                ? progress.certificates
+                : [];
+            if (!certificates || certificates.length === 0) {
+              // Maybe quiz was just passed and a record hasn't been created yet;
+              // redirect to dashboard where certs are listed, or notify user.
+              alert(
+                "Certificate record not found locally yet. Please visit your Dashboard to view certificates."
+              );
+              window.location.href = "dashboard.html";
+              return;
+            }
+            const cert = certificates[certificates.length - 1];
+            openCertificateModalForRecord(cert, {
+              name: currentUser ? currentUser.name : "Student",
+              email: currentUser ? currentUser.email : null,
+            });
           } catch (e) {
-            // fallback
-            prompt("Copy this certificate link:", url);
+            console.warn("Failed to open certificate modal:", e);
+            alert("Unable to open certificate. Try Dashboard instead.");
+            window.location.href = "dashboard.html";
           }
         });
       }
 
-      // download certificate by rendering the certificate DOM to image and embedding in PDF/PNG
-      async function downloadCertificate(format = "pdf") {
-        const preview = document.getElementById("certificate-preview");
-        if (!preview) {
-          alert("Certificate preview not ready.");
-          return;
-        }
-
-        // temporarily remove controls that shouldn't appear on the image
-        const controls = document.querySelectorAll(".cert-hide-on-export");
-        controls.forEach((c) => (c.style.display = "none"));
-
-        // use html2canvas
-        try {
-          const canvas = await html2canvas(preview, {
-            scale: 2,
-            useCORS: true,
-            scrollY: -window.scrollY,
-          });
-          // restore controls
-          controls.forEach((c) => (c.style.display = ""));
-
-          if (format === "png") {
-            const dataUrl = canvas.toDataURL("image/png");
-            const a = document.createElement("a");
-            a.href = dataUrl;
-            a.download = `${
-              document.getElementById("cert-student-name").value || "Student"
-            }_certificate.png`;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            return;
-          }
-
-          // PDF
-          const { jsPDF } = window.jspdf;
-          const pdf = new jsPDF({
-            orientation: canvas.width > canvas.height ? "l" : "p",
-            unit: "px",
-            format: [canvas.width, canvas.height],
-          });
-          const imgData = canvas.toDataURL("image/png");
-          pdf.addImage(imgData, "PNG", 0, 0, canvas.width, canvas.height);
-          const fname = `${
-            document.getElementById("cert-student-name").value || "Student"
-          }_certificate.pdf`;
-          pdf.save(fname);
-        } catch (err) {
-          console.error("Export failed", err);
-          alert("Certificate export failed. Open console for details.");
-          // restore controls in case of error
-          const controls2 = document.querySelectorAll(".cert-hide-on-export");
-          controls2.forEach((c) => (c.style.display = ""));
-        }
-      }
-
-      // Open modal programmatically for verify flow
-      function verifyAndShowCert(certId) {
-        const meta = getCertificateMeta(certId);
-        if (!meta) {
-          alert("Certificate not found or invalid.");
-          return;
-        }
-        // ensure courseId matches
-        if (meta.courseId !== cId) {
-          alert("Certificate does not correspond to this course.");
-          return;
-        }
-        // prefill name and open modal
-        openCertificateModal(certId);
-      }
-
-      // small modal markup append (outside main container so it doesn't get overwritten)
-      const modalHtml = `
-        <div id="certificate-modal" class="fixed inset-0 bg-black bg-opacity-60 hidden items-center justify-center p-4 z-[110]">
-          <div class="bg-white rounded-xl shadow-2xl w-full max-w-4xl p-6 relative">
-            <button id="cert-close" class="absolute top-4 right-4 text-gray-500 hover:text-gray-900 text-2xl"><i class="fas fa-times-circle"></i></button>
-            <div class="flex flex-col md:flex-row gap-6">
-              <div class="flex-1">
-                <div id="certificate-preview" class="p-10 border-8 border-double border-blue-600 rounded-lg text-center bg-white" style="min-height:280px;">
-                  <p class="text-xl text-gray-500 mb-2">CERTIFICATE OF COMPLETION</p>
-                  <h1 class="text-5xl font-serif text-blue-800 mb-6 font-extrabold">EduPro</h1>
-                  <p class="text-2xl font-light italic mb-4">This certificate is proudly presented to</p>
-                  <input id="cert-student-name" class="text-3xl font-semibold text-green-600 mb-2 text-center border-none focus:outline-none" style="background:transparent; text-align:center; width:100%;" />
-                  <p class="text-xl mb-6">for successfully completing the course</p>
-                  <h3 id="cert-course-title" class="text-3xl font-bold text-gray-800">...</h3>
-                  <div class="mt-8 text-lg text-gray-700 flex justify-center space-x-8">
-                    <span>Date: <span id="cert-date" class="font-bold">...</span></span>
-                    <span>Score: <span id="cert-score" class="font-bold">...</span></span>
+      // Build and open the certificate modal for a given certificate record (read-only)
+      function openCertificateModalForRecord(certRecord, userObj) {
+        // create modal if not already present
+        let modal = document.getElementById("certificate-modal");
+        if (!modal) {
+          const html = `
+            <div id="certificate-modal" class="fixed inset-0 bg-black bg-opacity-60 modal-hidden items-center justify-center p-4 z-[110]">
+              <div class="bg-white rounded-xl shadow-2xl w-full max-w-4xl p-6 relative">
+                <button id="cert-close" class="absolute top-4 right-4 text-gray-500 hover:text-gray-900 text-2xl"><i class="fas fa-times-circle"></i></button>
+                <div class="flex flex-col md:flex-row gap-6">
+                  <div class="flex-1">
+                    <div id="certificate-preview" class="p-10 border-8 border-double border-blue-600 rounded-lg text-center bg-white" style="min-height:280px;">
+                      <p class="text-xl text-gray-500 mb-2">CERTIFICATE OF COMPLETION</p>
+                      <h1 class="text-5xl font-serif text-blue-800 mb-6 font-extrabold">EduPro</h1>
+                      <p class="text-2xl font-light italic mb-4">This certificate is proudly presented to</p>
+                      <div id="cert-student-name" class="text-3xl font-semibold text-green-600 mb-2 text-center">${escapeHtml(
+                        userObj.name || "Student"
+                      )}</div>
+                      <p class="text-xl mb-6">for successfully completing the course</p>
+                      <h3 id="cert-course-title" class="text-3xl font-bold text-gray-800">...</h3>
+                      <div class="mt-8 text-lg text-gray-700 flex justify-center space-x-8">
+                        <span>Date: <span id="cert-date" class="font-bold">...</span></span>
+                        <span>Score: <span id="cert-score" class="font-bold">...</span></span>
+                      </div>
+                      <div class="mt-6 text-xs text-gray-400">Certificate ID: <span id="cert-id" class="font-mono"></span></div>
+                      <p class="mt-8 text-sm text-gray-400">Instructor Signature: John Doe</p>
+                    </div>
+                    <p class="text-sm text-gray-500 mt-3">You can download or print this certificate using the actions on the right.</p>
                   </div>
-                  <p class="mt-8 text-sm text-gray-400">Instructor Signature: John Doe</p>
-                </div>
-                <p class="text-sm text-gray-500 mt-3">Tip: Edit the name above to personalize the certificate before saving or downloading.</p>
-              </div>
 
-              <div class="w-full md:w-80 flex flex-col gap-3">
-                <div class="bg-gray-50 border rounded p-3">
-                  <div class="font-semibold mb-1">Certificate Actions</div>
-                  <div class="flex flex-col gap-2">
-                    <button id="cert-download-pdf" class="cert-hide-on-export px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Download PDF</button>
-                    <button id="cert-download-png" class="cert-hide-on-export px-3 py-2 bg-gray-800 text-white rounded hover:bg-gray-900">Download PNG</button>
-                    <button id="cert-print" class="cert-hide-on-export px-3 py-2 border rounded hover:bg-gray-50">Print</button>
-                    <button id="cert-save-meta" class="cert-hide-on-export px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700">Save & Register Certificate</button>
-                    <button id="cert-copy-link" class="cert-hide-on-export px-3 py-2 border rounded hover:bg-gray-50">Copy Certificate Link</button>
+                  <div class="w-full md:w-80 flex flex-col gap-3">
+                    <div class="bg-gray-50 border rounded p-3">
+                      <div class="font-semibold mb-1">Certificate Actions</div>
+                      <div class="flex flex-col gap-2">
+                        <button id="cert-download-pdf" class="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Download PDF</button>
+                        <button id="cert-print" class="px-3 py-2 border rounded hover:bg-gray-50">Print</button>
+                        <button id="cert-copy-link" class="px-3 py-2 border rounded hover:bg-gray-50">Copy Certificate Link</button>
+                        <a id="cert-dashboard-link" class="block text-center text-sm text-gray-600 mt-2 hover:underline">Open in Dashboard</a>
+                      </div>
+                    </div>
+
+                    <div class="bg-gray-50 border rounded p-3">
+                      <div class="font-semibold mb-1">Verification</div>
+                      <div class="text-sm text-gray-600">Share the certificate link or the ID to verify ownership in EduPro.</div>
+                    </div>
+
+                    <div class="bg-gray-50 border rounded p-3">
+                      <div class="font-semibold mb-1">Safety</div>
+                      <div class="text-sm text-gray-600">Certificates are stored in your account (local demo). In production you'd verify server-side.</div>
+                    </div>
                   </div>
-                </div>
-
-                <div class="bg-gray-50 border rounded p-3">
-                  <div class="font-semibold mb-1">Verification</div>
-                  <div class="text-sm text-gray-600">Each registered certificate has a unique ID saved to the browser. Use "Copy Certificate Link" to share or verify.</div>
-                </div>
-
-                <div class="bg-gray-50 border rounded p-3">
-                  <div class="font-semibold mb-1">Safety</div>
-                  <div class="text-sm text-gray-600">This certificate is for demo purposes and stored locally; for production you'd store and verify server-side.</div>
                 </div>
               </div>
             </div>
-          </div>
-        </div>
-      `;
-      document.body.insertAdjacentHTML("beforeend", modalHtml);
+          `;
+          document.body.insertAdjacentHTML("beforeend", html);
+          modal = document.getElementById("certificate-modal");
 
-      // modal close wiring
-      document.addEventListener("click", (e) => {
-        const modal = document.getElementById("certificate-modal");
-        if (!modal) return;
-        const target = e.target;
-        if (
-          target.id === "cert-close" ||
-          (target.closest && target.closest("#cert-close"))
-        ) {
-          modal.classList.add("hidden");
+          // close handler
+          document.addEventListener("click", (e) => {
+            const modalEl = document.getElementById("certificate-modal");
+            if (!modalEl) return;
+            const target = e.target;
+            if (
+              target.id === "cert-close" ||
+              (target.closest && target.closest("#cert-close"))
+            ) {
+              modalEl.classList.add("modal-hidden");
+              modalEl.classList.remove("modal-flex");
+            }
+          });
         }
-      });
+
+        // populate fields
+        const courseTitleNode = document.getElementById("cert-course-title");
+        const dateNode = document.getElementById("cert-date");
+        const scoreNode = document.getElementById("cert-score");
+        const idNode = document.getElementById("cert-id");
+        const studentNameNode = document.getElementById("cert-student-name");
+
+        if (courseTitleNode)
+          courseTitleNode.innerText = escapeHtml(
+            certRecord.courseTitle || course.title || ""
+          );
+        if (dateNode)
+          dateNode.innerText = new Date(
+            certRecord.issuedOn
+          ).toLocaleDateString();
+        if (scoreNode)
+          scoreNode.innerText = `${certRecord.score}/${
+            (course.quiz || []).length
+          }`;
+        if (idNode) idNode.innerText = certRecord.id;
+        if (studentNameNode)
+          studentNameNode.innerText = escapeHtml(
+            userObj.name || (currentUser && currentUser.name) || "Student"
+          );
+
+        // wire actions
+        const dlp = document.getElementById("cert-download-pdf");
+        const prn = document.getElementById("cert-print");
+        const copyBtn = document.getElementById("cert-copy-link");
+        const dashLink = document.getElementById("cert-dashboard-link");
+
+        if (dlp) {
+          dlp.onclick = () => {
+            // call shared helper
+            if (typeof window.downloadCertificatePDF === "function") {
+              window.downloadCertificatePDF(cId);
+            } else {
+              alert("Download is not available.");
+            }
+          };
+        }
+        if (prn) {
+          prn.onclick = () => {
+            if (typeof window.printCertificate === "function") {
+              window.printCertificate(cId);
+            } else {
+              window.print();
+            }
+          };
+        }
+        if (copyBtn) {
+          copyBtn.onclick = async () => {
+            const url = `${location.origin}${
+              location.pathname
+            }?id=${cId}&certId=${encodeURIComponent(certRecord.id)}`;
+            try {
+              await navigator.clipboard.writeText(url);
+              alert("Certificate link copied to clipboard.");
+            } catch (e) {
+              prompt("Copy this certificate link:", url);
+            }
+          };
+        }
+        if (dashLink) {
+          dashLink.onclick = (e) => {
+            e.preventDefault();
+            window.location.href = `dashboard.html`;
+          };
+        }
+
+        // show modal
+        modal.classList.remove("modal-hidden");
+        modal.classList.add("modal-flex");
+        setTimeout(() => modal.classList.add("fade-in"), 20);
+      }
 
       // Listen for progressUpdated to update UI live (quiz page dispatches this event)
       window.addEventListener("progressUpdated", (ev) => {
-        // If certificate saved or quiz scored, re-render to show changes
-        try {
-          const detail = ev.detail || {};
-          if (
-            !detail ||
-            (detail.courseId && parseInt(detail.courseId, 10) !== cId)
-          ) {
-            // ignore if not for this course
-          }
-        } catch (e) {}
-        // update progress UI smoothly
         try {
           const newPercent = calculateCourseProgress(cId);
           const progElem = document.getElementById("animated-progress");
@@ -832,10 +676,18 @@
             );
             if (percentNode) percentNode.innerText = `${newPercent}%`;
           }
-          // also re-render a few bits (like certificate button)
-          showCertificateButtonIfEligible();
+          // re-evaluate certificate button visibility
+          // small timeout to allow state to settle
+          setTimeout(() => {
+            // re-render parts that depend on progress (only the certificate button visibility)
+            const btn = document.getElementById("btn-view-cert");
+            if (!btn) {
+              // If the button isn't present but user may now be eligible, do a small DOM update:
+              // (we'll re-run renderCourseDetail lightly)
+              renderCourseDetail();
+            }
+          }, 80);
         } catch (err) {
-          // safe-guard
           console.warn("progressUpdated handler error", err);
         }
       });
@@ -843,5 +695,7 @@
       // initial render
       setTimeout(renderCourseDetail, 50);
     </script>
+
+    <!-- NOTE: certificate modal is generated on-demand by the page script above -->
   </body>
 </html>
