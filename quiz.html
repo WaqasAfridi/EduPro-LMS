@@ -73,6 +73,17 @@
 
     <script src="script.js"></script>
     <script>
+      // small helper: escape text for injection safety (defined early)
+      function escapeHtml(str) {
+        if (typeof str !== "string") return str == null ? "" : String(str);
+        return str
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
+
       // Safety: ensure auth helper exists
       if (typeof getCurrentUser !== "function" || !getCurrentUser()) {
         alert("You must be logged in to view this page.");
@@ -80,8 +91,19 @@
       }
 
       const container = document.getElementById("quiz-container");
+      if (!container) {
+        console.error("Quiz container missing from DOM.");
+      }
+
       const params = new URLSearchParams(window.location.search);
-      const cId = parseInt(params.get("courseId"), 10);
+      const cId = Number.parseInt(params.get("courseId"), 10);
+
+      if (!Number.isFinite(cId)) {
+        if (container) {
+          container.innerHTML = `<div class="text-center p-8 text-red-600 font-bold">Invalid course specified.</div>`;
+        }
+        throw new Error("Invalid courseId");
+      }
 
       let course = null;
       let quizData = [];
@@ -90,12 +112,15 @@
       let isLocked = false; // prevent double clicking
       let previousSavedScore = null;
 
-      // ARIA live region for announcements
-      const liveRegion = document.createElement("div");
-      liveRegion.setAttribute("aria-live", "polite");
-      liveRegion.setAttribute("id", "quiz-live");
-      liveRegion.className = "sr-only";
-      document.body.appendChild(liveRegion);
+      // ARIA live region for announcements — create only once
+      let liveRegion = document.getElementById("quiz-live");
+      if (!liveRegion) {
+        liveRegion = document.createElement("div");
+        liveRegion.setAttribute("aria-live", "polite");
+        liveRegion.setAttribute("id", "quiz-live");
+        liveRegion.className = "sr-only";
+        document.body.appendChild(liveRegion);
+      }
 
       // initialize after small delay so script.js helpers are ready
       setTimeout(initQuiz, 50);
@@ -103,22 +128,31 @@
       function initQuiz() {
         course = (window.coursesData || []).find((c) => c.id === cId);
         if (!course) {
-          container.innerHTML = `<div class="text-center p-8 text-red-600 font-bold">Error: Course not found.</div>`;
+          if (container)
+            container.innerHTML = `<div class="text-center p-8 text-red-600 font-bold">Error: Course not found.</div>`;
           return;
         }
 
         quizData = Array.isArray(course.quiz) ? course.quiz : [];
 
-        // get existing progress for this user/course
-        const progress = getProgress(cId);
+        // get existing progress for this user/course (defensive)
+        const progress =
+          typeof getProgress === "function"
+            ? getProgress(cId) || { completedLessons: [], quizScore: null }
+            : { completedLessons: [], quizScore: null };
+
         previousSavedScore =
-          progress.quizScore !== undefined ? progress.quizScore : null;
+          progress && progress.quizScore !== undefined
+            ? progress.quizScore
+            : null;
 
         // Check lesson completion enforcement
         const completedCount = Array.isArray(progress.completedLessons)
           ? progress.completedLessons.length
           : 0;
-        const totalLessons = (course.lessons || []).length;
+        const totalLessons = Array.isArray(course.lessons)
+          ? course.lessons.length
+          : 0;
 
         if (completedCount !== totalLessons) {
           renderRequirementError(course.title, totalLessons, completedCount);
@@ -129,14 +163,16 @@
         if (previousSavedScore !== null && previousSavedScore !== undefined) {
           renderPreviousResult(
             previousSavedScore,
-            previousSavedScore >= PASS_SCORE
+            previousSavedScore >=
+              (typeof PASS_SCORE !== "undefined" ? PASS_SCORE : 3)
           );
           return;
         }
 
         // otherwise start quiz
         if (!quizData || quizData.length === 0) {
-          container.innerHTML = `<div class="text-center p-8 text-gray-600">No quiz available for this course.</div>`;
+          if (container)
+            container.innerHTML = `<div class="text-center p-8 text-gray-600">No quiz available for this course.</div>`;
           return;
         }
 
@@ -147,6 +183,7 @@
       }
 
       function renderRequirementError(courseTitle, totalLessons, done) {
+        if (!container) return;
         container.innerHTML = `
           <div class="text-center py-8">
             <i class="fas fa-lock text-5xl text-red-500 mb-4"></i>
@@ -163,6 +200,7 @@
       }
 
       function renderPreviousResult(savedScore, passed) {
+        if (!container) return;
         // Keep quizData length if present, otherwise show 0
         const total = quizData.length || 0;
         container.innerHTML = `
@@ -191,7 +229,7 @@
         if (retryBtn) {
           retryBtn.addEventListener("click", () => {
             // Clear saved score and restart
-            saveQuizScore(cId, null); // overwrite stored score
+            if (typeof saveQuizScore === "function") saveQuizScore(cId, null); // overwrite stored score
             // dispatch update event so dashboard updates
             window.dispatchEvent(
               new CustomEvent("progressUpdated", {
@@ -209,6 +247,7 @@
 
       function renderQuestion() {
         isLocked = false;
+        if (!container) return;
 
         if (!quizData || quizData.length === 0) {
           container.innerHTML = `<div class="text-center p-8 text-gray-600">No quiz questions available.</div>`;
@@ -220,13 +259,15 @@
           return showResult();
         }
 
-        const q = quizData[currentQ];
+        const q = quizData[currentQ] || {};
+        const questionText = q.q || "Question text missing";
+        const options = Array.isArray(q.options) ? q.options : [];
 
         container.innerHTML = `
           <div class="flex justify-between items-center mb-6">
             <div>
               <h3 class="text-sm text-gray-500 font-semibold uppercase">Course</h3>
-              <p class="font-bold text-lg">${escapeHtml(course.title)}</p>
+              <p class="font-bold text-lg">${escapeHtml(course.title || "")}</p>
             </div>
             <div class="text-right">
               <div class="text-xs text-gray-500">Question ${currentQ + 1} of ${
@@ -237,13 +278,15 @@
           </div>
 
           <h2 class="text-2xl font-bold mb-6 text-gray-800">${escapeHtml(
-            q.q
+            questionText
           )}</h2>
 
           <div id="options-container" class="space-y-4">
-            ${q.options
-              .map(
-                (opt, idx) => `
+            ${
+              options.length > 0
+                ? options
+                    .map(
+                      (opt, idx) => `
               <button
                 class="option-btn w-full text-left p-4 border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition duration-200 font-medium text-gray-700"
                 id="option-${idx}"
@@ -251,8 +294,10 @@
                 aria-describedby="q-desc"
               >${escapeHtml(opt)}</button>
             `
-              )
-              .join("")}
+                    )
+                    .join("")
+                : `<div class="text-center text-red-500 p-4">No options provided for this question.</div>`
+            }
           </div>
 
           <div class="mt-6 flex items-center justify-between">
@@ -263,60 +308,83 @@
           </div>
         `;
 
-        // attach listeners to options (keyboard & mouse)
+        // attach listeners to options (keyboard & mouse) — defensively
         const optionsWrap = document.getElementById("options-container");
-        optionsWrap.querySelectorAll("button").forEach((btn) => {
-          btn.addEventListener("click", () =>
-            handleAnswerClick(btn, Number(btn.dataset.index))
-          );
-          btn.addEventListener("keydown", (e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              handleAnswerClick(btn, Number(btn.dataset.index));
-            }
+        if (optionsWrap) {
+          const buttons = optionsWrap.querySelectorAll("button");
+          buttons.forEach((btn) => {
+            const idx = Number(btn.dataset.index);
+            btn.addEventListener("click", () =>
+              handleAnswerClick(btn, Number.isFinite(idx) ? idx : -1)
+            );
+            btn.addEventListener("keydown", (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                handleAnswerClick(btn, Number.isFinite(idx) ? idx : -1);
+              }
+            });
           });
-        });
+
+          // focus the first option for keyboard users
+          const firstBtn = optionsWrap.querySelector("button");
+          if (firstBtn) {
+            firstBtn.focus();
+          }
+        }
 
         // skip button - move to next question without scoring (optional)
         const skipBtn = document.getElementById("skip-btn");
-        skipBtn.addEventListener("click", () => {
-          if (isLocked) return;
-          isLocked = true;
-          // visually mark none selected, then proceed
-          setTimeout(() => {
-            currentQ++;
-            renderQuestion();
-          }, 250);
-        });
+        if (skipBtn) {
+          skipBtn.addEventListener("click", () => {
+            if (isLocked) return;
+            isLocked = true;
+            // visually mark none selected, then proceed
+            setTimeout(() => {
+              currentQ++;
+              renderQuestion();
+            }, 250);
+          });
+          // keyboard access for skip
+          skipBtn.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              skipBtn.click();
+            }
+          });
+        }
 
         // announce question to SR
-        liveSay(`Question ${currentQ + 1}. ${q.q}`);
+        liveSay(`Question ${currentQ + 1}. ${questionText}`);
       }
 
       function handleAnswerClick(buttonElement, selectedIdx) {
         if (isLocked) return;
         isLocked = true;
 
-        const q = quizData[currentQ];
-        const correctIdx = q.correct;
+        const q = quizData[currentQ] || {};
+        const correctIdx =
+          typeof q.correct === "number" && Number.isFinite(q.correct)
+            ? q.correct
+            : -1;
 
         // mark chosen
-        if (selectedIdx === correctIdx) {
+        if (selectedIdx === correctIdx && selectedIdx >= 0) {
           score++;
-          applyCorrectStyle(buttonElement);
+          if (buttonElement) applyCorrectStyle(buttonElement);
           liveSay("Correct.");
         } else {
-          applyIncorrectStyle(buttonElement);
+          if (buttonElement) applyIncorrectStyle(buttonElement);
           // highlight correct after a tiny delay to make it clear
-          const correctBtn = document.getElementById(`option-${correctIdx}`);
-          if (correctBtn) applyCorrectStyle(correctBtn);
+          if (correctIdx >= 0) {
+            const correctBtn = document.getElementById(`option-${correctIdx}`);
+            if (correctBtn) applyCorrectStyle(correctBtn);
+          }
           liveSay("Incorrect. The correct answer was read.");
         }
 
         // disable all option buttons
-        document
-          .querySelectorAll("#options-container button")
-          .forEach((b) => (b.disabled = true));
+        const opts = document.querySelectorAll("#options-container button");
+        opts.forEach((b) => (b.disabled = true));
 
         // proceed to next question after brief pause to show feedback
         setTimeout(() => {
@@ -330,6 +398,7 @@
       }
 
       function applyCorrectStyle(el) {
+        if (!el || !el.classList) return;
         el.classList.remove(
           "border-gray-200",
           "hover:border-blue-500",
@@ -344,6 +413,7 @@
       }
 
       function applyIncorrectStyle(el) {
+        if (!el || !el.classList) return;
         el.classList.remove(
           "border-gray-200",
           "hover:border-blue-500",
@@ -358,9 +428,13 @@
       }
 
       function showResult() {
-        const passed = score >= PASS_SCORE;
+        const PASS = typeof PASS_SCORE !== "undefined" ? PASS_SCORE : 3;
+        const passed = score >= PASS;
+
         // save to storage (script.js helper)
-        saveQuizScore(cId, score);
+        if (typeof saveQuizScore === "function") {
+          saveQuizScore(cId, score);
+        }
 
         // dispatch so dashboard / course-detail update immediately
         window.dispatchEvent(
@@ -371,6 +445,7 @@
 
         const total = quizData.length || 0;
 
+        if (!container) return;
         container.innerHTML = `
           <div class="text-center py-8">
             <div class="inline-block p-4 rounded-full ${
@@ -383,7 +458,7 @@
             <h2 class="text-3xl font-bold mb-2 text-gray-900">${
               passed ? "Congratulations, You Passed!" : "Quiz Failed"
             }</h2>
-            <p class="text-lg text-gray-600 mb-6">You scored <span class="font-bold text-black">${score}</span> out of ${total}. You needed ${PASS_SCORE} to pass.</p>
+            <p class="text-lg text-gray-600 mb-6">You scored <span class="font-bold text-black">${score}</span> out of ${total}. You needed ${PASS} to pass.</p>
             <div class="flex justify-center gap-4">
               ${
                 passed
@@ -410,7 +485,7 @@
           if (retryBtn) {
             retryBtn.addEventListener("click", () => {
               // Clear stored score and restart quiz
-              saveQuizScore(cId, null);
+              if (typeof saveQuizScore === "function") saveQuizScore(cId, null);
               window.dispatchEvent(
                 new CustomEvent("progressUpdated", {
                   detail: { courseId: cId, quizScore: null },
@@ -440,17 +515,6 @@
         } catch (e) {
           /* noop */
         }
-      }
-
-      // helper to escape text for injection safety
-      function escapeHtml(str) {
-        if (typeof str !== "string") return str;
-        return str
-          .replace(/&/g, "&amp;")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;")
-          .replace(/"/g, "&quot;")
-          .replace(/'/g, "&#039;");
       }
     </script>
   </body>
